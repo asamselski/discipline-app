@@ -1,21 +1,22 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  // Ścieżka pod GitHub Pages (nazwa Twojego repozytorium z ukośnikami)
-  base: '/discipline-app/', 
+  base: '/discipline-app/',
   plugins: [
     react(),
+    tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
         name: 'SamoDyscyplina',
         short_name: 'Dyscyplina',
         description: 'Aplikacja do budowania nawyków i samodyscypliny',
-        theme_color: '#000000',
-        background_color: '#ffffff',
-        display: 'standalone', // Dzięki temu działa jak natywna aplikacja bez paska przeglądarki
+        theme_color: '#0f172a',
+        background_color: '#0f172a',
+        display: 'standalone',
         icons: [
           {
             src: 'https://via.placeholder.com/192',

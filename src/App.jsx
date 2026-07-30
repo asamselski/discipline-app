@@ -5,20 +5,30 @@ import {
   Trash2, Calendar as CalendarIcon, Check, Play, Pause, Quote, X, User, Settings, ShieldCheck, Sun, Moon, Sparkles, Flame, MessageSquare, AlertTriangle, Edit3, Tag, PieChart, ChevronLeft, ChevronRight, CheckSquare, Clock, Type, Target, Activity, Dumbbell, Footprints, Utensils, Brain, ChevronDown, GripVertical, Bell, Laptop, BookOpen, Archive, RotateCcw
 } from 'lucide-react';
 
+const parseLocalDate = (dateStr) => {
+  if (!dateStr) return new Date();
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+const formatDateStr = (dateObj) => {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const getAppDayString = (customResetTime) => {
   const resetTimeStr = customResetTime !== undefined ? customResetTime : (localStorage.getItem('discipline_reset_time') || '00:00');
   const now = new Date();
   const [resetH, resetM] = resetTimeStr.split(':').map(Number);
-  
+    
   let appDate = new Date(now);
   if (now.getHours() < resetH || (now.getHours() === resetH && now.getMinutes() < resetM)) {
     appDate.setDate(appDate.getDate() - 1);
   }
-  
-  const y = appDate.getFullYear();
-  const m = String(appDate.getMonth() + 1).padStart(2, '0');
-  const d = String(appDate.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+    
+  return formatDateStr(appDate);
 };
 
 const INITIAL_CATEGORIES = [
@@ -87,8 +97,8 @@ const appliesToDate = (habit, targetDateStr) => {
     return habit.customDates && habit.customDates.includes(targetDateStr);
   }
   if (habit.repeat === 'interval') {
-    const start = new Date(habit.createdAt);
-    const target = new Date(targetDateStr);
+    const start = parseLocalDate(habit.createdAt);
+    const target = parseLocalDate(targetDateStr);
     start.setHours(0,0,0,0);
     target.setHours(0,0,0,0);
     const diffTime = Math.abs(target - start);
@@ -117,7 +127,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('today');
   const chartScrollRef = useRef(null);
-  
+    
   const [userName, setUserName] = useState(() => localStorage.getItem('discipline_user_name') || 'Wojownik');
   const [userGender, setUserGender] = useState(() => localStorage.getItem('discipline_user_gender') || 'male');
   const [theme, setTheme] = useState(() => localStorage.getItem('discipline_theme') || 'system');
@@ -205,7 +215,7 @@ export default function App() {
     const savedGoals = localStorage.getItem('discipline_goals');
     if (savedGoals) return JSON.parse(savedGoals);
     return [
-      { id: 302, title: 'Wiedźmin: Ostatnie Życzenie', category: 'umysl', type: 'read_book', target: 332, currentPage: 120, dueDate: getAppDayString(), comment: '' }
+      { id: 302, title: 'Wiedźmin: Ostatnie Życzenie', category: 'umysl', type: 'read_book', target: 332, currentPage: 120, dueDate: getAppDayString(), comment: '', isDaily: false }
     ];
   });
 
@@ -226,7 +236,7 @@ export default function App() {
   const [newHabitDifficulty, setNewHabitDifficulty] = useState('medium');
   const [newHabitHasReminder, setNewHabitHasReminder] = useState(false);
   const [newHabitReminderTime, setNewHabitReminderTime] = useState('08:00');
-  
+    
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDueDate, setNewTaskDueDate] = useState(() => getAppDayString());
   const [newTaskDifficulty, setNewTaskDifficulty] = useState('medium');
@@ -241,6 +251,7 @@ export default function App() {
   const [newGoalCurrentPage, setNewGoalCurrentPage] = useState('0');
   const [newGoalDueDate, setNewGoalDueDate] = useState(() => getAppDayString());
   const [newGoalComment, setNewGoalComment] = useState('');
+  const [newGoalIsDaily, setNewGoalIsDaily] = useState(false);
 
   const [activityGoalId, setActivityGoalId] = useState('');
   const [activityPages, setActivityPages] = useState('');
@@ -260,7 +271,7 @@ export default function App() {
   const [showAddActivityModal, setShowAddActivityModal] = useState(false);
   const [showAllQuotesModal, setShowAllQuotesModal] = useState(false);
   const [showDeleteNoteConfirm, setShowDeleteNoteConfirm] = useState(false);
-  
+    
   const [selectedDate, setSelectedDate] = useState(() => getAppDayString());
 
   const [lastCheckedLevel, setLastCheckedLevel] = useState(() => {
@@ -300,7 +311,7 @@ export default function App() {
     const reminderInterval = setInterval(() => {
       const now = new Date();
       const currentTimeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-      
+        
       habits.forEach(h => {
         if (h.hasReminder && h.reminderTime === currentTimeStr && appliesToDate(h, todayStr)) {
           const log = habitLogs[todayStr]?.[h.id] || {};
@@ -382,11 +393,11 @@ export default function App() {
   };
 
   const checkStreakBonus = (habitId, targetDate) => {
-    const d = new Date(targetDate);
+    const d = parseLocalDate(targetDate);
     const d1 = new Date(d); d1.setDate(d.getDate() - 1);
     const d2 = new Date(d); d2.setDate(d.getDate() - 2);
-    const str1 = d1.toISOString().split('T')[0];
-    const str2 = d2.toISOString().split('T')[0];
+    const str1 = formatDateStr(d1);
+    const str2 = formatDateStr(d2);
     const done1 = habitLogs[str1]?.[habitId]?.completed;
     const done2 = habitLogs[str2]?.[habitId]?.completed;
     return done1 && done2;
@@ -443,7 +454,18 @@ export default function App() {
 
     if (type === 'habit') setHabits(habits.filter(h => h.id !== id));
     else if (type === 'task') setTasks(tasks.filter(t => t.id !== id));
-    else if (type === 'workout') setWorkouts(workouts.filter(w => w.id !== id));
+    else if (type === 'workout') {
+      const wToDelete = workouts.find(w => w.id === id);
+      if (wToDelete && wToDelete.goalId) {
+         setGoals(goals.map(g => {
+            if (g.id === wToDelete.goalId) {
+               return { ...g, currentPage: Math.max(0, (g.currentPage || 0) - wToDelete.amount) };
+            }
+            return g;
+         }));
+      }
+      setWorkouts(workouts.filter(w => w.id !== id));
+    }
     else if (type === 'goal') setGoals(goals.filter(g => g.id !== id));
 
     setConfirmDeleteModal(null);
@@ -557,7 +579,7 @@ export default function App() {
     else if (newWorkoutType === 'steps') { calculatedPkt = Math.round(amountVal / 1000 * 5); unit = 'kroków'; }
     else if (newWorkoutType === 'study') { calculatedPkt = Math.round(amountVal * 10); unit = 'godz.'; }
     else if (newWorkoutType === 'no_sweets') { calculatedPkt = 20; unit = 'dni'; }
-    
+      
     setWorkouts([{ id: Date.now(), date: todayStr, type: newWorkoutType, amount: amountVal, unit, pkt: calculatedPkt }, ...workouts]);
     setNewWorkoutAmount('');
     setShowAddWorkoutModal(false);
@@ -578,7 +600,8 @@ export default function App() {
       type: newGoalType, 
       target: targetVal, 
       currentPage: currentPg,
-      dueDate: newGoalDueDate, 
+      dueDate: newGoalIsDaily ? null : newGoalDueDate, 
+      isDaily: newGoalIsDaily,
       comment: newGoalComment.trim() 
     }]);
 
@@ -587,6 +610,7 @@ export default function App() {
     setNewGoalCurrentPage('0');
     setNewGoalDueDate(todayStr); 
     setNewGoalComment('');
+    setNewGoalIsDaily(false);
     setShowAddGoalModal(false);
   };
 
@@ -599,7 +623,7 @@ export default function App() {
     if (!goal) return;
 
     const newCurrent = Math.min(goal.target, (goal.currentPage || 0) + val);
-    
+      
     setGoals(goals.map(g => g.id === goal.id ? { ...g, currentPage: newCurrent } : g));
 
     let unitLabel = 'stron';
@@ -608,6 +632,7 @@ export default function App() {
 
     const newWorkout = {
       id: Date.now(),
+      goalId: goal.id, 
       date: todayStr,
       type: goal.type,
       amount: val,
@@ -681,8 +706,8 @@ export default function App() {
     const sortedDates = Array.from(allDatesSet).sort();
     if (sortedDates.length === 0) return 0;
 
-    const startDate = new Date(sortedDates[0]);
-    const endDate = new Date(todayStr);
+    const startDate = parseLocalDate(sortedDates[0]);
+    const endDate = parseLocalDate(todayStr);
 
     let rawPkt = 0;
     Object.entries(habitLogs).forEach(([dateStr, logs]) => {
@@ -708,11 +733,26 @@ export default function App() {
 
     goals.forEach(goal => {
       const isProgressType = goal.type === 'read_book' || goal.type === 'study' || goal.type === 'no_sweets';
-      if (isProgressType) {
-        if ((goal.currentPage || 0) >= goal.target) rawPkt += 30;
+      
+      if (goal.isDaily) {
+          const dailySums = {};
+          workouts.forEach(w => {
+             if (isProgressType && w.goalId === goal.id) {
+                 dailySums[w.date] = (dailySums[w.date] || 0) + w.amount;
+             } else if (!isProgressType && w.type === goal.type) {
+                 dailySums[w.date] = (dailySums[w.date] || 0) + w.amount;
+             }
+          });
+          Object.values(dailySums).forEach(sum => {
+             if (goal.target && sum >= goal.target) rawPkt += 30;
+          });
       } else {
-        const currentSum = workouts.filter(w => w.type === goal.type).reduce((acc, w) => acc + w.amount, 0);
-        if (goal.target && currentSum >= goal.target) rawPkt += 30;
+          if (isProgressType) {
+            if ((goal.currentPage || 0) >= goal.target) rawPkt += 30;
+          } else {
+            const currentSum = workouts.filter(w => w.type === goal.type).reduce((acc, w) => acc + w.amount, 0);
+            if (goal.target && currentSum >= goal.target) rawPkt += 30;
+          }
       }
     });
 
@@ -721,11 +761,11 @@ export default function App() {
     let curr = new Date(startDate);
 
     while (curr <= endDate) {
-      const dStr = curr.toISOString().split('T')[0];
+      const dStr = formatDateStr(curr);
       const hasHabit = Object.values(habitLogs[dStr] || {}).some(l => l.completed);
       const hasTask = tasks.some(t => getTaskCompletedDate(t) === dStr);
       const hasWorkout = workouts.some(w => w.date === dStr);
-      
+        
       if (hasHabit || hasTask || hasWorkout) {
         consecutiveZeroDays = 0;
       } else {
@@ -751,7 +791,7 @@ export default function App() {
       const msgs = isRankUp 
         ? [`Nowa ranga odblokowana, ${userName}: ${newRankObj.name}! To już nie jest zwykła dyscyplina, to Twój nowy charakter.`]
         : [`Poziom ${currentLevel} zdobyty, ${userName}! Twoja konsekwencja zaczyna przynosić realne owoce.`];
-      
+        
       setLevelUpModalData({ show: true, level: currentLevel, isRankUp, message: msgs[0], rankName: newRankObj?.name });
       setLastCheckedLevel(currentLevel);
       localStorage.setItem('discipline_last_checked_level', currentLevel.toString());
@@ -781,9 +821,9 @@ export default function App() {
     const stats = {};
     const year = selectedMonthDate.getFullYear();
     const month = selectedMonthDate.getMonth();
-    
+      
     Object.entries(habitLogs).forEach(([dateStr, logs]) => {
-      const d = new Date(dateStr);
+      const d = parseLocalDate(dateStr);
       if (d.getFullYear() === year && d.getMonth() === month) {
         Object.entries(logs).forEach(([hId, log]) => {
           if (log.completed) {
@@ -820,6 +860,9 @@ export default function App() {
     if (theme === 'light') {
       return {
         cardBg: 'bg-white border-slate-200/80 text-black shadow-sm',
+        habitsBg: 'bg-emerald-50 border-emerald-100 text-black shadow-sm',
+        tasksBg: 'bg-sky-50 border-sky-100 text-black shadow-sm',
+        workoutsBg: 'bg-amber-50 border-amber-100 text-black shadow-sm',
         subText: 'text-slate-700',
         titleText: 'text-black',
         inputBg: 'bg-slate-50 border-slate-300 text-black placeholder-slate-500',
@@ -838,6 +881,9 @@ export default function App() {
     if (theme === 'gold') {
       return {
         cardBg: 'bg-zinc-900/90 border-amber-500/20 text-zinc-100 shadow-xl',
+        habitsBg: 'bg-zinc-900/90 border-emerald-500/30 text-zinc-100 shadow-xl',
+        tasksBg: 'bg-zinc-900/90 border-sky-500/30 text-zinc-100 shadow-xl',
+        workoutsBg: 'bg-zinc-900/90 border-amber-500/30 text-zinc-100 shadow-xl',
         subText: 'text-zinc-400',
         titleText: 'text-zinc-100',
         inputBg: 'bg-zinc-950 border-amber-500/30 text-zinc-100 placeholder-zinc-500',
@@ -855,6 +901,9 @@ export default function App() {
     }
     return {
       cardBg: 'bg-slate-800/80 border-slate-700/60 text-slate-100 shadow-lg',
+      habitsBg: 'bg-emerald-900/20 border-emerald-700/30 text-slate-100 shadow-lg',
+      tasksBg: 'bg-sky-900/20 border-sky-700/30 text-slate-100 shadow-lg',
+      workoutsBg: 'bg-amber-900/20 border-amber-700/30 text-slate-100 shadow-lg',
       subText: 'text-slate-400',
       titleText: 'text-white',
       inputBg: 'bg-slate-900 border-slate-700 text-white placeholder-slate-500',
@@ -883,7 +932,7 @@ export default function App() {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-      
+        
       let dayHabitsPKT = 0;
       if (habitLogs[dateStr]) {
         Object.entries(habitLogs[dateStr]).forEach(([hId, log]) => {
@@ -896,7 +945,7 @@ export default function App() {
 
       const dayTasksPKT = tasks.reduce((acc, t) => acc + (getTaskCompletedDate(t) === dateStr ? (t.pkt || 20) : 0), 0);
       const dayWorkoutsPKT = workouts.filter(w => w.date === dateStr).reduce((acc, w) => acc + (w.pkt || 0), 0);
-      
+        
       const dayPKT = dayHabitsPKT + dayTasksPKT + dayWorkoutsPKT;
       monthTotalPKT += dayPKT;
       daysData.push({ dateStr, dayLabel: String(day), pkt: dayPKT });
@@ -995,17 +1044,26 @@ export default function App() {
     );
   };
 
-  const selectedHabits = habits
+  const selectedDayHabits = habits
     .filter(h => appliesToDate(h, selectedDate))
-    .map(h => {
-      const log = habitLogs[selectedDate]?.[h.id] || { completed: false };
-      return { ...h, ...log };
-    });
+    .map(h => ({ ...h, ...(habitLogs[selectedDate]?.[h.id] || { completed: false }) }));
+
+  const selectedDayTasks = tasks.filter(t => t.dueDate === selectedDate || getTaskCompletedDate(t) === selectedDate);
+  const selectedDayWorkouts = workouts.filter(w => w.date === selectedDate);
 
   const isPastDay = selectedDate < todayStr;
   const isFutureDay = selectedDate > todayStr;
   const currentNote = notes[selectedDate] || '';
   const monthNameDisplay = selectedMonthDate.toLocaleString('pl-PL', { month: 'long', year: 'numeric' });
+
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [currentNote, selectedDate]);
 
   const renderBlock = (blockKey, blockIndex) => {
     const blockHeaderProps = {
@@ -1019,7 +1077,7 @@ export default function App() {
 
     if (blockKey === 'habits') {
       return (
-        <div key="habits" className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all ' + tStyle.cardBg + (isLayoutEditing ? ' ring-2 ring-amber-500 animate-pulse' : '')}>
+        <div key="habits" className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all ' + tStyle.habitsBg + (isLayoutEditing ? ' ring-2 ring-amber-500 animate-pulse' : '')}>
           <div 
             {...blockHeaderProps} 
             onClick={(e) => handleHeaderClick(e, 'habits')}
@@ -1100,7 +1158,7 @@ export default function App() {
 
     if (blockKey === 'tasks') {
       return (
-        <div key="tasks" className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all ' + tStyle.cardBg + (isLayoutEditing ? ' ring-2 ring-amber-500 animate-pulse' : '')}>
+        <div key="tasks" className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all ' + tStyle.tasksBg + (isLayoutEditing ? ' ring-2 ring-amber-500 animate-pulse' : '')}>
           <div 
             {...blockHeaderProps} 
             onClick={(e) => handleHeaderClick(e, 'tasks')}
@@ -1122,7 +1180,7 @@ export default function App() {
               <ChevronDown className={`w-5 h-5 transition-transform duration-300 shrink-0 ${tStyle.subText} ${collapsedSections.tasks ? '-rotate-90' : ''}`} />
             </div>
           </div>
-          
+            
           {!collapsedSections.tasks && (
             <div className="mt-4 pt-3 border-t border-slate-500/20 space-y-3 animate-fadeIn">
               {todayTasksForProgress.length > 0 && (
@@ -1167,7 +1225,7 @@ export default function App() {
 
     if (blockKey === 'workouts') {
       return (
-        <div key="workouts" className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all ' + tStyle.cardBg + (isLayoutEditing ? ' ring-2 ring-amber-500 animate-pulse' : '')}>
+        <div key="workouts" className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all ' + tStyle.workoutsBg + (isLayoutEditing ? ' ring-2 ring-amber-500 animate-pulse' : '')}>
           <div 
             {...blockHeaderProps} 
             onClick={(e) => handleHeaderClick(e, 'workouts')}
@@ -1189,7 +1247,7 @@ export default function App() {
               <ChevronDown className={`w-5 h-5 transition-transform duration-300 shrink-0 ${tStyle.subText} ${collapsedSections.workouts ? '-rotate-90' : ''}`} />
             </div>
           </div>
-          
+            
           {!collapsedSections.workouts && (
             <div className="mt-4 pt-3 border-t border-slate-500/20 space-y-3 animate-fadeIn">
               <div className="space-y-3">
@@ -1236,6 +1294,7 @@ export default function App() {
 
   const archivedTasks = tasks.filter(t => isTaskDone(t));
   const archivedGoals = goals.filter(goal => {
+    if (goal.isDaily) return false;
     const isProgressType = goal.type === 'read_book' || goal.type === 'study' || goal.type === 'no_sweets';
     const currentVal = isProgressType ? (goal.currentPage || 0) : workouts.filter(w => w.type === goal.type).reduce((acc, w) => acc + w.amount, 0);
     const percent = Math.min(100, Math.round((currentVal / goal.target) * 100));
@@ -1244,7 +1303,7 @@ export default function App() {
 
   return (
     <div className={'min-h-screen pb-32 px-4 md:px-8 pt-6 md:pt-10 max-w-md md:max-w-3xl lg:max-w-5xl mx-auto select-none transition-colors duration-300 ' + currentFontConfig.sizeClass}>
-      
+       
       {activeTab === 'today' && (
         <>
           <header className="flex justify-between items-center mb-6 md:mb-8">
@@ -1391,10 +1450,22 @@ export default function App() {
               {goals.length > 0 ? (
                 goals.map(goal => {
                   const isProgressType = goal.type === 'read_book' || goal.type === 'study' || goal.type === 'no_sweets';
-                  const currentVal = isProgressType ? (goal.currentPage || 0) : workouts.filter(w => w.type === goal.type).reduce((acc, w) => acc + w.amount, 0);
+                  
+                  let currentVal = 0;
+                  if (goal.isDaily) {
+                      if (isProgressType) {
+                          currentVal = workouts.filter(w => w.goalId === goal.id && w.date === todayStr).reduce((acc, w) => acc + w.amount, 0);
+                      } else {
+                          currentVal = workouts.filter(w => w.type === goal.type && w.date === todayStr).reduce((acc, w) => acc + w.amount, 0);
+                      }
+                  } else {
+                      currentVal = isProgressType ? (goal.currentPage || 0) : workouts.filter(w => w.type === goal.type).reduce((acc, w) => acc + w.amount, 0);
+                  }
+                  
                   const percent = Math.min(100, Math.round((currentVal / goal.target) * 100));
-                  const isOverdue = goal.dueDate && goal.dueDate < todayStr && percent < 100;
+                  const isOverdue = !goal.isDaily && goal.dueDate && goal.dueDate < todayStr && percent < 100;
                   const isCompleted = percent >= 100;
+                  
                   let CatIcon = Target;
                   if (goal.category === 'sport') CatIcon = Dumbbell;
                   if (goal.category === 'jedzenie') CatIcon = Utensils;
@@ -1420,12 +1491,19 @@ export default function App() {
                         </div>
                       </div>
                       {goal.comment && <div className={'mb-2 p-2.5 rounded-xl bg-slate-500/10 italic ' + currentFontConfig.smallClass + ' ' + tStyle.subText}>💬 "{goal.comment}"</div>}
-                      {goal.dueDate && (
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span className={currentFontConfig.smallClass + ' font-mono ' + (isOverdue ? 'text-red-500 font-bold' : tStyle.subText)}>Termin: {goal.dueDate} {isOverdue && '(przekroczony!)'}</span>
-                        </div>
-                      )}
+                      
+                      {goal.isDaily ? (
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <RotateCcw className="w-3.5 h-3.5 text-sky-500" />
+                            <span className={currentFontConfig.smallClass + ' font-mono text-sky-600 dark:text-sky-400 font-bold'}>Cel codzienny (dzisiejszy postęp)</span>
+                          </div>
+                      ) : goal.dueDate ? (
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <span className={currentFontConfig.smallClass + ' font-mono ' + (isOverdue ? 'text-red-500 font-bold' : tStyle.subText)}>Termin: {goal.dueDate} {isOverdue && '(przekroczony!)'}</span>
+                          </div>
+                      ) : null}
+
                       <div className="flex justify-between items-center mb-1.5 font-mono text-sm">
                         <span className={tStyle.subText}>{goal.type === 'read_book' ? 'Strona:' : goal.type === 'study' ? 'Godziny:' : goal.type === 'no_sweets' ? 'Dni:' : 'Postęp:'}</span>
                         <span className="font-bold text-emerald-500">{currentVal} / {goal.target} {goal.type === 'read_book' ? 'stron' : goal.type === 'study' ? 'godz.' : goal.type === 'no_sweets' ? 'dni' : goal.type === 'steps' ? 'kroków' : ''} ({percent}%) {isCompleted && '✨ (+30 PKT)'}</span>
@@ -1495,15 +1573,15 @@ export default function App() {
 
             <div className="space-y-6">
               <div className={'p-5 rounded-2xl border shadow-sm ' + tStyle.cardBg}>
-                <h3 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider mb-3 ' + tStyle.subText}>
-                  {isFutureDay ? 'Zaplanowane Nawyki: ' : 'Podgląd Nawyków: '} <span className="text-emerald-500 font-mono">{selectedDate}</span>
+                <h3 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider mb-3 ' + tStyle.titleText}>
+                  Podgląd Dnia: <span className="text-emerald-500 font-mono">{selectedDate}</span>
                 </h3>
-                {selectedHabits.length > 0 ? (
-                  <div className="space-y-2.5">
-                    {selectedHabits.map((h) => (
-                      <div key={h.id} className={'flex items-center justify-between bg-slate-500/10 p-3.5 rounded-xl ' + currentFontConfig.smallClass}>
+                {(selectedDayHabits.length > 0 || selectedDayTasks.length > 0 || selectedDayWorkouts.length > 0) ? (
+                  <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+                    {selectedDayHabits.map((h) => (
+                      <div key={'h-' + h.id} className={'flex items-center justify-between bg-slate-500/10 p-3.5 rounded-xl ' + currentFontConfig.smallClass}>
                         <div>
-                          <span className={h.completed && !isFutureDay ? 'text-emerald-500 line-through' : tStyle.titleText}>{h.name}</span>
+                          <span className={h.completed && !isFutureDay ? 'text-emerald-500 line-through' : tStyle.titleText}>⚡ {h.name}</span>
                           {h.duration > 0 && <span className={'block opacity-70 mt-0.5 ' + tStyle.subText}>{h.duration} minut</span>}
                         </div>
                         <span className={'font-semibold px-2.5 py-1 rounded-full text-[10px] md:text-xs uppercase tracking-wider border ' + (
@@ -1513,13 +1591,41 @@ export default function App() {
                               ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' 
                               : 'bg-slate-500/20 text-slate-600 dark:text-slate-400 border-slate-500/30'
                         )}>
-                          {isFutureDay ? 'Zaplanowane' : (h.completed ? 'Wykonane' : 'Niewykonane')}
+                          {isFutureDay ? 'Zaplanowany' : (h.completed ? 'Wykonane' : 'Niewykonane')}
                         </span>
                       </div>
                     ))}
+                    {selectedDayTasks.map((t) => {
+                      const isDone = isTaskDone(t);
+                      return (
+                        <div key={'t-' + t.id} className={'flex items-center justify-between bg-sky-500/10 p-3.5 rounded-xl border border-sky-500/25 ' + currentFontConfig.smallClass}>
+                          <div>
+                            <span className={isDone ? 'text-sky-500 line-through' : tStyle.titleText}>📋 {t.title}</span>
+                            <span className={'block opacity-70 mt-0.5 ' + tStyle.subText}>Termin: {t.dueDate}</span>
+                          </div>
+                          <span className={'font-semibold px-2.5 py-1 rounded-full text-[10px] md:text-xs uppercase tracking-wider border ' + (isDone ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' : 'bg-sky-500/20 text-sky-600 dark:text-sky-400 border-sky-500/30')}>
+                            {isDone ? 'Zadanie ukończone' : 'Zadanie aktywne'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {selectedDayWorkouts.map((w) => {
+                      let typeName = w.type === 'run' ? 'Bieg' : w.type === 'pushups' ? 'Pompki' : w.type === 'pullups' ? 'Drążek' : w.type === 'squats' ? 'Przysiady' : w.type === 'situps' ? 'Brzuszki' : w.type === 'bike' ? 'Rower' : w.type === 'gym' ? 'Siłownia' : w.type === 'walk_km' ? 'Spacer' : w.type === 'steps' ? 'Kroki' : w.type === 'study' ? 'Nauka' : w.type === 'read_book' ? 'Książka' : w.type === 'no_sweets' ? 'Dni bez słodyczy' : 'Spacer (czas)';
+                      return (
+                        <div key={'w-' + w.id} className={'flex items-center justify-between bg-amber-500/10 p-3.5 rounded-xl border border-amber-500/25 ' + currentFontConfig.smallClass}>
+                          <div>
+                            <span className={'font-bold ' + tStyle.titleText}>🔥 {typeName}: {w.amount} {w.unit}</span>
+                            <span className={'block opacity-70 mt-0.5 text-amber-500 font-bold'}>+{w.pkt} PKT</span>
+                          </div>
+                          <span className="font-semibold px-2.5 py-1 rounded-full text-[10px] md:text-xs uppercase tracking-wider border bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                            Trening/Aktywność
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <p className={currentFontConfig.smallClass + ' text-center py-4 ' + tStyle.subText}>Brak nawyków powiązanych z tym dniem.</p>
+                  <p className={currentFontConfig.smallClass + ' text-center py-4 ' + tStyle.subText}>Brak zarejestrowanych aktywności w tym dniu.</p>
                 )}
               </div>
 
@@ -1535,12 +1641,17 @@ export default function App() {
                 </div>
 
                 <textarea
-                  rows={4}
+                  ref={textareaRef}
+                  rows={2}
                   disabled={isPastDay && Boolean(currentNote)}
                   value={currentNote}
-                  onChange={(e) => saveNote(e.target.value)}
+                  onChange={(e) => {
+                    saveNote(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = e.target.scrollHeight + 'px';
+                  }}
                   placeholder={isPastDay ? "Brak notatki dla tego dnia." : "Wpisz swoje myśli..."}
-                  className={'w-full rounded-2xl p-4 focus:outline-none transition-all ' + tStyle.inputBg + (isPastDay && Boolean(currentNote) ? ' opacity-80 cursor-not-allowed italic' : '')}
+                  className={'w-full rounded-2xl p-4 focus:outline-none transition-all resize-none overflow-hidden ' + tStyle.inputBg + (isPastDay && Boolean(currentNote) ? ' opacity-80 cursor-not-allowed italic' : '')}
                 />
               </div>
             </div>
@@ -1560,6 +1671,47 @@ export default function App() {
               <Settings className="w-5 h-5 md:w-6 md:h-6" />
             </button>
           </header>
+
+          <div className={'p-5 md:p-6 rounded-3xl border mb-6 shadow-sm ' + tStyle.cardBg}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className={currentFontConfig.smallClass + ' md:text-sm font-medium block mb-2 ' + tStyle.subText}>Twoje Imię</label>
+                <input 
+                  type="text" 
+                  value={userName} 
+                  onChange={(e) => {
+                    setUserName(e.target.value);
+                    localStorage.setItem('discipline_user_name', e.target.value);
+                  }} 
+                  placeholder="Wpisz swoje imię..." 
+                  className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} 
+                />
+              </div>
+              <div>
+                <label className={currentFontConfig.smallClass + ' md:text-sm font-medium block mb-2 ' + tStyle.subText}>Forma (Płeć)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    onClick={() => {
+                      setUserGender('male');
+                      localStorage.setItem('discipline_user_gender', 'male');
+                    }} 
+                    className={'py-3 rounded-2xl border ' + currentFontConfig.smallClass + ' font-semibold transition-all ' + (userGender === 'male' ? tStyle.optSelected : tStyle.optUnselected)}
+                  >
+                    Mężczyzna 👨
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setUserGender('female');
+                      localStorage.setItem('discipline_user_gender', 'female');
+                    }} 
+                    className={'py-3 rounded-2xl border ' + currentFontConfig.smallClass + ' font-semibold transition-all ' + (userGender === 'female' ? tStyle.optSelected : tStyle.optUnselected)}
+                  >
+                    Kobieta 👩
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className={'p-6 md:p-8 rounded-3xl border mb-6 shadow-xl relative overflow-hidden ' + tStyle.cardBg}>
             <div className="flex items-center gap-5 mb-5">
@@ -1634,7 +1786,7 @@ export default function App() {
 
       {showArchiveModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[120] overflow-y-auto">
-          <div className={'w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl p-6 md:p-8 shadow-2xl border flex flex-col ' + tStyle.modalBg}>
+          <div className={'w-full max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 md:p-8 shadow-2xl border flex flex-col ' + tStyle.modalBg}>
             <div className="flex justify-between items-center mb-6 pb-3 border-b border-slate-500/20">
               <div className="flex items-center gap-2.5">
                 <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-500 border border-amber-500/40">
@@ -1743,7 +1895,7 @@ export default function App() {
 
       {showSettingsModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl p-6 shadow-2xl border space-y-6 ' + tStyle.modalBg}>
+          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border space-y-6 ' + tStyle.modalBg}>
             <div className="flex justify-between items-center pb-3 border-b border-slate-500/20">
               <div className="flex items-center gap-2">
                 <Settings className="w-5 h-5 text-emerald-500" />
@@ -1751,24 +1903,10 @@ export default function App() {
               </div>
               <button onClick={() => setShowSettingsModal(false)} className={'p-2 rounded-full transition-colors ' + tStyle.modalBtnBg} title="Zamknij"><X className="w-5 h-5" /></button>
             </div>
-            
-            <div className="grid grid-cols-1 gap-4">
-              <div>
-                <label className={currentFontConfig.smallClass + ' md:text-sm font-medium block mb-2 ' + tStyle.subText}>Twoje Imię</label>
-                <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} placeholder="Wpisz swoje imię..." className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
-              </div>
-              <div>
-                <label className={currentFontConfig.smallClass + ' md:text-sm font-medium block mb-2 ' + tStyle.subText}>Forma (Płeć)</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setUserGender('male')} className={'py-3 rounded-2xl border ' + currentFontConfig.smallClass + ' font-semibold transition-all ' + (userGender === 'male' ? tStyle.optSelected : tStyle.optUnselected)}>Mężczyzna 👨</button>
-                  <button onClick={() => setUserGender('female')} className={'py-3 rounded-2xl border ' + currentFontConfig.smallClass + ' font-semibold transition-all ' + (userGender === 'female' ? tStyle.optSelected : tStyle.optUnselected)}>Kobieta 👩</button>
-                </div>
-              </div>
-            </div>
 
             <div>
               <label className={currentFontConfig.smallClass + ' md:text-sm font-medium block mb-2 ' + tStyle.subText}>Kategorie Nawyków</label>
-              <div className="space-y-2 mb-3 max-h-40 overflow-y-auto pr-1">
+              <div className="space-y-2 mb-3">
                 {categories.map(cat => (
                   <div key={cat.id} className={'flex items-center justify-between p-3 rounded-2xl border ' + tStyle.cardBg}>
                     <span className={currentFontConfig.smallClass + ' px-3 py-1 rounded-full border font-bold ' + cat.color}>{cat.label}</span>
@@ -1813,7 +1951,7 @@ export default function App() {
                   const newTime = e.target.value;
                   setResetTime(newTime);
                   localStorage.setItem('discipline_reset_time', newTime);
-                  
+                    
                   const newToday = getAppDayString(newTime);
                   if (newToday !== todayStr) {
                     setTodayStr(newToday);
@@ -1822,9 +1960,6 @@ export default function App() {
                 }} 
                 className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} 
               />
-              <p className={"mt-2 opacity-70 leading-snug " + currentFontConfig.smallClass + " " + tStyle.subText}>
-                Wybierz, o której godzinie nawyki wyzerują się na nowy dzień (np. 02:00 w nocy, jeśli kładziesz się spać bardzo późno).
-              </p>
             </div>
 
             <button onClick={() => setShowSettingsModal(false)} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3.5 rounded-2xl font-bold transition-transform active:scale-95 shadow-lg shadow-emerald-500/20">Zamknij ustawienia</button>
@@ -1847,7 +1982,7 @@ export default function App() {
 
       {showAddHabitModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
+          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
             <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>Dodaj nowy nawyk</h3>
             <form onSubmit={addHabit} className="space-y-4">
               <div>
@@ -1916,10 +2051,6 @@ export default function App() {
                         })()}
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs pt-1">
-                      <span className={tStyle.subText}>Wybrane dni: <strong className="text-emerald-500">{newHabitCustomDates.length}</strong></span>
-                      {newHabitCustomDates.length > 0 && <button type="button" onClick={() => setNewHabitCustomDates([])} className="text-red-400 hover:text-red-300 font-semibold">Wyczyść zaznaczenie</button>}
-                    </div>
                   </div>
                 )}
               </div>
@@ -1950,7 +2081,7 @@ export default function App() {
 
       {editingHabit && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
+          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
             <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>Edytuj nawyk</h3>
             <form onSubmit={saveEditedHabit} className="space-y-4">
               <div>
@@ -2090,9 +2221,18 @@ export default function App() {
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Wybierz cel</label>
                 <select value={activityGoalId} onChange={(e) => setActivityGoalId(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg}>
                   <option value="">-- Wybierz cel --</option>
-                  {goals.filter(g => g.category === 'umysl' || g.category === 'jedzenie').map(g => (
-                    <option key={g.id} value={g.id}>{g.title} (obecnie: {g.currentPage || 0}/{g.target} {g.type === 'study' ? 'godz.' : g.type === 'no_sweets' ? 'dni' : 'stron'})</option>
-                  ))}
+                  {goals.filter(g => g.category === 'umysl' || g.category === 'jedzenie').map(g => {
+                    const isProgressType = g.type === 'read_book' || g.type === 'study' || g.type === 'no_sweets';
+                    let currentVal = 0;
+                    if (g.isDaily) {
+                        currentVal = workouts.filter(w => w.goalId === g.id && w.date === todayStr).reduce((acc, w) => acc + w.amount, 0);
+                    } else {
+                        currentVal = (g.currentPage || 0);
+                    }
+                    return (
+                      <option key={g.id} value={g.id}>{g.title} (obecnie: {currentVal}/{g.target} {g.type === 'study' ? 'godz.' : g.type === 'no_sweets' ? 'dni' : 'stron'})</option>
+                    );
+                  })}
                 </select>
               </div>
               <div>
@@ -2109,8 +2249,8 @@ export default function App() {
       )}
 
       {showAddGoalModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className={'w-full max-w-md rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
             <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>Dodaj nowy cel</h3>
             <form onSubmit={addGoal} className="space-y-4">
               <div>
@@ -2142,7 +2282,7 @@ export default function App() {
                       <option value="steps">Kroki (liczba kroków)</option>
                       <option value="run">Bieganie (km)</option>
                       <option value="pushups">Pompki (powtórzenia)</option>
-                      <option value="rower">Rower (km)</option>
+                      <option value="bike">Rower (km)</option>
                       <option value="gym">Siłownia (minuty)</option>
                       <option value="pullups">Drążek (powtórzenia)</option>
                       <option value="squats">Przysiady (powtórzenia)</option>
@@ -2155,19 +2295,28 @@ export default function App() {
                   )}
                 </select>
               </div>
-              {(newGoalType === 'read_book' || newGoalType === 'study' || newGoalType === 'no_sweets') && (
+              
+              <div className="pt-2 border-t border-slate-500/20">
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input type="checkbox" checked={newGoalIsDaily} onChange={(e) => setNewGoalIsDaily(e.target.checked)} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
+                  <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>Codziennie (odnawia się każdego dnia)</span>
+                </label>
+              </div>
+
+              {(!newGoalIsDaily && (newGoalType === 'read_book' || newGoalType === 'study' || newGoalType === 'no_sweets')) && (
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Już zrealizowane (start: {newGoalType === 'study' ? 'godziny' : newGoalType === 'no_sweets' ? 'dni' : 'strony'})</label>
                   <input type="number" step="any" min="0" value={newGoalCurrentPage} onChange={(e) => setNewGoalCurrentPage(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
                 </div>
               )}
+              
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Docelowa wartość</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Docelowa wartość {newGoalIsDaily ? '(na dzień)' : ''}</label>
                 <input type="number" step="any" placeholder={newGoalType === 'study' ? 'np. 50' : newGoalType === 'read_book' ? 'np. 300' : newGoalType === 'no_sweets' ? 'np. 30' : 'np. 100000'} value={newGoalTarget} onChange={(e) => setNewGoalTarget(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
               </div>
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Termin realizacji (opcjonalnie)</label>
-                <input type="date" value={newGoalDueDate} onChange={(e) => setNewGoalDueDate(e.target.value)} className={'w-full max-w-full box-border appearance-none rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} style={{ WebkitAppearance: 'none' }} />
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + (newGoalIsDaily ? 'opacity-50 ' : '') + tStyle.subText}>Termin realizacji (opcjonalnie)</label>
+                <input disabled={newGoalIsDaily} type="date" value={newGoalDueDate} onChange={(e) => setNewGoalDueDate(e.target.value)} className={'w-full max-w-full box-border appearance-none rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg + (newGoalIsDaily ? ' opacity-50 cursor-not-allowed' : '')} style={{ WebkitAppearance: 'none' }} />
               </div>
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Komentarz / Motywacja (opcjonalnie)</label>
@@ -2183,23 +2332,36 @@ export default function App() {
       )}
 
       {editingGoal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className={'w-full max-w-md rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
             <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>Edytuj cel</h3>
             <form onSubmit={saveEditedGoal} className="space-y-4">
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Tytuł / Nazwa celu</label>
                 <input type="text" value={editingGoal.title} onChange={(e) => setEditingGoal({ ...editingGoal, title: e.target.value })} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
               </div>
-              {(editingGoal.type === 'read_book' || editingGoal.type === 'study' || editingGoal.type === 'no_sweets') && (
+              
+              <div className="pt-2 border-t border-slate-500/20">
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input type="checkbox" checked={editingGoal.isDaily || false} onChange={(e) => setEditingGoal({ ...editingGoal, isDaily: e.target.checked, dueDate: e.target.checked ? null : editingGoal.dueDate })} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
+                  <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>Codziennie (odnawia się każdego dnia)</span>
+                </label>
+              </div>
+
+              {(!editingGoal.isDaily && (editingGoal.type === 'read_book' || editingGoal.type === 'study' || editingGoal.type === 'no_sweets')) && (
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Aktualny postęp ({editingGoal.type === 'study' ? 'godziny' : editingGoal.type === 'no_sweets' ? 'dni' : 'strony'})</label>
                   <input type="number" step="any" min="0" value={editingGoal.currentPage || 0} onChange={(e) => setEditingGoal({ ...editingGoal, currentPage: parseFloat(e.target.value) || 0 })} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
                 </div>
               )}
+              
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Docelowa wartość</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Docelowa wartość {editingGoal.isDaily ? '(na dzień)' : ''}</label>
                 <input type="number" step="any" value={editingGoal.target} onChange={(e) => setEditingGoal({ ...editingGoal, target: parseFloat(e.target.value) || 0 })} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
+              </div>
+              <div>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + (editingGoal.isDaily ? 'opacity-50 ' : '') + tStyle.subText}>Termin realizacji</label>
+                <input disabled={editingGoal.isDaily} type="date" value={editingGoal.dueDate || ''} onChange={(e) => setEditingGoal({ ...editingGoal, dueDate: e.target.value })} className={'w-full max-w-full box-border appearance-none rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg + (editingGoal.isDaily ? ' opacity-50 cursor-not-allowed' : '')} style={{ WebkitAppearance: 'none' }} />
               </div>
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Komentarz / Motywacja</label>
@@ -2216,7 +2378,7 @@ export default function App() {
 
       {showAllQuotesModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className={'w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl p-6 md:p-8 shadow-2xl border flex flex-col ' + tStyle.modalBg}>
+          <div className={'w-full max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 md:p-8 shadow-2xl border flex flex-col ' + tStyle.modalBg}>
             <div className="flex justify-between items-center mb-6 pb-3 border-b border-slate-500/20">
               <div className="flex items-center gap-2">
                 <Quote className="w-6 h-6 text-amber-500" />
@@ -2286,7 +2448,7 @@ export default function App() {
           <div className={'w-full max-w-md rounded-3xl p-8 shadow-2xl relative text-center border ' + tStyle.modalBg}>
             <div className="w-14 h-14 bg-amber-500/20 border border-amber-500/40 rounded-2xl flex items-center justify-center mx-auto mb-5 text-amber-500 shadow-inner"><Quote className="w-7 h-7" /></div>
             <span className={currentFontConfig.smallClass + ' md:text-sm font-bold uppercase tracking-widest text-amber-500 block mb-2'}>Cytat na dziś</span>
-            <p className={currentFontConfig.sizeClass + ' md:text-xl font-medium leading-relaxed mb-4 ' + tStyle.titleText}>"{quoteModal.data.text}"</p>
+            <p className={currentFontConfig.sizeClass + ' md:text-xl font-medium leading-relaxed mb-4 ' + tStyle.titleText}>"{quoteModal.data.quote}"</p>
             <p className={currentFontConfig.smallClass + ' md:text-base font-semibold text-amber-500 mb-8'}>— {quoteModal.data.author}</p>
             <button onClick={closeQuoteModal} className={'w-full bg-amber-500 hover:bg-amber-400 text-slate-950 py-3.5 rounded-2xl font-bold ' + currentFontConfig.sizeClass + ' transition-transform active:scale-95 shadow-lg shadow-amber-500/25'}>Zaczynamy dzień! ⚡</button>
           </div>

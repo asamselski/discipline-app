@@ -88,6 +88,43 @@ const TROPHIES = [
   { id: 'platinum_master', title: 'Mistrz Dyscypliny', desc: 'Zdobądź wszystkie pozostałe trofea', rank: 'platinum' }
 ];
 
+// --- KONFIGURACJA KREATORA CELÓW ---
+const GOAL_CATEGORIES_CONFIG = {
+  health: { id: 'health', label: '🌿 Zdrowie', dbCat: 'Zdrowie',
+    types: [
+      { id: 'no_sweets', label: 'Brak słodyczy (dni)' },
+      { id: 'water', label: 'Picie wody (dni)' },
+      { id: 'sleep', label: 'Sen min. 7h (dni)' }
+    ]
+  },
+  sport: { id: 'sport', label: '🏃 Sport', dbCat: 'Zdrowie',
+    types: [
+      { id: 'walk_km', label: 'Marsz (km)' },
+      { id: 'run', label: 'Bieganie (km)' },
+      { id: 'bike', label: 'Rower (km)' },
+      { id: 'stretching', label: 'Rozciąganie (min)' },
+      { id: 'pullups', label: 'Drążek (powt.)' },
+      { id: 'pushups', label: 'Pompki (powt.)' },
+      { id: 'squats', label: 'Przysiady (powt.)' },
+      { id: 'situps', label: 'Brzuszki (powt.)' }
+    ]
+  },
+  book: { id: 'book', label: '📖 Książka', dbCat: 'Rozwój', types: [{ id: 'read_book', label: 'Liczba stron' }] },
+  study: { id: 'study', label: '🧠 Nauka', dbCat: 'Rozwój',
+    types: [
+      { id: 'study', label: 'Nauka ogólna (godziny)' },
+      { id: 'language', label: 'Język obcy (lekcje)' },
+      { id: 'course', label: 'Kurs online (moduły)' }
+    ]
+  },
+  work: { id: 'work', label: '💼 Praca', dbCat: 'Praca',
+    types: [
+      { id: 'deep_work', label: 'Praca w skupieniu (godziny)' },
+      { id: 'project', label: 'Ukończone zadania (szt.)' }
+    ]
+  }
+};
+
 const rankWeight = { bronze: 1, silver: 2, gold: 3, platinum: 4 };
 const sortedTrophies = [...TROPHIES].sort((a, b) => rankWeight[b.rank] - rankWeight[a.rank]);
 
@@ -281,14 +318,46 @@ export default function App() {
   const [newWorkoutAmount, setNewWorkoutAmount] = useState('');
   const [newWorkoutGoalId, setNewWorkoutGoalId] = useState('');
 
-  const [newGoalTitle, setNewGoalTitle] = useState('');
-  const [newGoalCategory, setNewGoalCategory] = useState('Rozwój');
-  const [newGoalType, setNewGoalType] = useState('read_book');
-  const [newGoalTarget, setNewGoalTarget] = useState('');
-  const [newGoalCurrentPage, setNewGoalCurrentPage] = useState('0');
-  const [newGoalDueDate, setNewGoalDueDate] = useState(() => getAppDayString());
-  const [newGoalComment, setNewGoalComment] = useState('');
-  const [newGoalIsDaily, setNewGoalIsDaily] = useState(false);
+  // --- STAN KREATORA CELÓW (WIZARD) ---
+  const [goalWizardStep, setGoalWizardStep] = useState(0); 
+  const [wizardData, setWizardData] = useState({
+    categoryKey: '',  
+    type: '',         
+    title: '',
+    target: '',
+    dueDate: getAppDayString(),
+    isDaily: false,
+    createTask: false,
+    taskRepeat: 'daily',
+    taskTitle: '',
+    taskAmount: '',
+    taskDifficulty: 'medium',
+    taskDuration: ''
+  });
+
+  const openGoalWizard = () => {
+    setWizardData({
+      categoryKey: '', type: '', title: '', target: '', 
+      dueDate: getAppDayString(), isDaily: false, 
+      createTask: false, taskRepeat: 'daily', taskTitle: '',
+      taskAmount: '', taskDifficulty: 'medium', taskDuration: ''
+    });
+    setGoalWizardStep(1);
+    setShowAddGoalModal(true); 
+  };
+
+  const getUnitForType = (type) => {
+    const units = {
+      walk_km: 'km', run: 'km', bike: 'km',
+      stretching: 'min', gym: 'min',
+      pullups: 'powt.', pushups: 'powt.', squats: 'powt.', situps: 'powt.',
+      read_book: 'stron', read_chapters: 'rozdziałów',
+      study: 'godz.', language: 'lekcji', course: 'modułów',
+      deep_work: 'godz.', project: 'szt.',
+      no_sweets: 'dni', water: 'dni', sleep: 'dni', steps: 'kroków'
+    };
+    return units[type] || 'jedn.';
+  };
 
   const [activityGoalId, setActivityGoalId] = useState('');
   const [activityPages, setActivityPages] = useState('');
@@ -317,7 +386,6 @@ export default function App() {
   });
   const [levelUpModalData, setLevelUpModalData] = useState(null);
 
-  // Automatyczne wyśrodkowanie wykresu na dzisiejszym dniu po otwarciu Profilu
   useEffect(() => {
     if (activeTab === 'profile' && chartScrollRef.current) {
       const now = new Date();
@@ -743,33 +811,91 @@ export default function App() {
     setEditingWorkout(null);
   };
 
-  const addGoal = (e) => {
-    e.preventDefault();
-    const targetVal = parseFloat(newGoalTarget);
-    if (!newGoalTitle.trim() || isNaN(targetVal) || targetVal <= 0) return;
-
-    const currentPg = parseInt(newGoalCurrentPage) || 0;
-
-    setGoals([...goals, { 
-      id: Date.now(), 
-      title: newGoalTitle.trim(), 
-      category: newGoalCategory, 
-      type: newGoalType, 
-      target: targetVal, 
-      currentPage: currentPg,
-      dueDate: newGoalIsDaily ? null : newGoalDueDate, 
-      isDaily: newGoalIsDaily,
-      comment: newGoalComment.trim() 
-    }]);
-
-    setNewGoalTitle(''); 
-    setNewGoalTarget(''); 
-    setNewGoalCurrentPage('0');
-    setNewGoalDueDate(todayStr); 
-    setNewGoalComment('');
-    setNewGoalIsDaily(false);
-    setShowAddGoalModal(false);
+  // --- LOGIKA KREATORA CELÓW WIZARD ---
+  const handleWizardNext = () => {
+    if (goalWizardStep === 1 && wizardData.categoryKey) {
+      if (wizardData.categoryKey === 'book') {
+         setWizardData({...wizardData, type: 'read_book'});
+      }
+      setGoalWizardStep(2);
+    } 
+    else if (goalWizardStep === 2) {
+      if (!wizardData.title.trim() || !wizardData.target || !wizardData.type) return;
+      
+      let generatedTaskTitle = `Praca nad: ${wizardData.title.trim()}`;
+      if (wizardData.categoryKey === 'book') generatedTaskTitle = `Czytanie: ${wizardData.title.trim()}`;
+      if (wizardData.categoryKey === 'sport') generatedTaskTitle = `Trening: ${wizardData.title.trim()}`;
+      
+      setWizardData({...wizardData, taskTitle: generatedTaskTitle});
+      setGoalWizardStep(3); 
+    }
+    else if (goalWizardStep === 4) {
+      finalizeWizard(true);
+    }
   };
+
+  const finalizeWizard = (forceCreateTask = null) => {
+    const targetVal = parseFloat(wizardData.target);
+    if (isNaN(targetVal) || targetVal <= 0) {
+        alert("Wróć do kroku 2 i podaj prawidłową wartość docelową celu.");
+        return;
+    }
+
+    const catConfig = GOAL_CATEGORIES_CONFIG[wizardData.categoryKey];
+    
+    const newGoal = {
+      id: Date.now(),
+      title: wizardData.title.trim(),
+      category: catConfig.dbCat,
+      type: wizardData.type,
+      target: targetVal,
+      currentPage: 0,
+      dueDate: wizardData.isDaily ? null : wizardData.dueDate,
+      isDaily: wizardData.isDaily,
+      comment: ''
+    };
+    
+    setGoals(prev => [...prev, newGoal]);
+
+    const shouldCreateTask = forceCreateTask !== null ? forceCreateTask : wizardData.createTask;
+
+    if (shouldCreateTask && wizardData.taskTitle) {
+       let finalTaskTitle = wizardData.taskTitle.trim();
+       if (wizardData.taskAmount) {
+          finalTaskTitle += ` (${wizardData.taskAmount} ${getUnitForType(wizardData.type)})`;
+       }
+       
+       const durationMin = parseInt(wizardData.taskDuration) || 0;
+       let basePkt = wizardData.taskDifficulty === 'easy' ? 10 : wizardData.taskDifficulty === 'hard' ? 35 : 20;
+       const finalPkt = durationMin > 0 ? Math.max(basePkt, Math.min(50, durationMin)) : basePkt;
+
+       const newTask = {
+         id: Date.now() + 1,
+         title: finalTaskTitle,
+         category: catConfig.dbCat,
+         goalId: newGoal.id,
+         pkt: finalPkt, 
+         difficulty: wizardData.taskDifficulty || 'medium',
+         repeat: wizardData.taskRepeat,
+         intervalDays: wizardData.taskRepeat === 'interval' ? 2 : 1,
+         customDates: [],
+         dueDate: wizardData.dueDate,
+         duration: durationMin,
+         hasReminder: false,
+         reminderTime: '08:00',
+         createdAt: todayStr,
+         isCompleted: false,
+         completedDates: {},
+         timeLeft: durationMin * 60,
+         isRunning: false
+       };
+       setTasks(prev => [...prev, newTask]);
+    }
+
+    setGoalWizardStep(0); 
+    setShowAddGoalModal(false); 
+  };
+
 
   const addActivity = (e) => {
     e.preventDefault();
@@ -1716,7 +1842,7 @@ export default function App() {
               <p className={currentFontConfig.smallClass + ' md:text-base ' + tStyle.subText}>Globalne centrum zarządzania celami oraz zadaniami</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button onClick={() => setShowAddGoalModal(true)} className={'bg-amber-500 hover:bg-amber-400 transition-colors text-slate-950 font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg ' + currentFontConfig.smallClass}><Target className="w-4 h-4" /> + Cel</button>
+              <button onClick={openGoalWizard} className={'bg-amber-500 hover:bg-amber-400 transition-colors text-slate-950 font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg ' + currentFontConfig.smallClass}><Target className="w-4 h-4" /> + Cel</button>
             </div>
           </header>
 
@@ -2087,6 +2213,209 @@ export default function App() {
       </nav>
 
       {/* --- MODALE --- */}
+
+      {/* NOWY KREATOR CELÓW (WIZARD) */}
+      {(showAddGoalModal || goalWizardStep > 0) && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] overflow-y-auto">
+          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
+            
+            {/* Header Modala z przyciskiem powrotu/zamknięcia */}
+            <div className="flex justify-between items-center mb-6 pb-2 border-b border-slate-500/20">
+               <div className="flex items-center gap-2">
+                 {goalWizardStep > 1 && (
+                    <button onClick={() => setGoalWizardStep(prev => prev - 1)} className="p-1.5 rounded-full hover:bg-slate-500/20 transition-colors">
+                       <ChevronLeft className="w-5 h-5" />
+                    </button>
+                 )}
+                 <h3 className={currentFontConfig.sizeClass + ' font-bold ' + tStyle.titleText}>
+                    {goalWizardStep === 1 ? 'Krok 1: Kategoria' : goalWizardStep === 2 ? 'Krok 2: Parametry Celu' : goalWizardStep === 3 ? 'Krok 3: Synergia' : 'Krok 4: Nawyk'}
+                 </h3>
+               </div>
+               <button onClick={() => { setGoalWizardStep(0); setShowAddGoalModal(false); }} className={'p-1.5 rounded-full hover:bg-slate-500/20 transition-colors'}><X className="w-5 h-5"/></button>
+            </div>
+
+            {/* KROK 1: WYBÓR KATEGORII */}
+            {goalWizardStep === 1 && (
+              <div className="grid grid-cols-2 gap-3 animate-fadeIn">
+                {Object.values(GOAL_CATEGORIES_CONFIG).map(cat => (
+                  <button 
+                    key={cat.id}
+                    onClick={() => setWizardData({...wizardData, categoryKey: cat.id})}
+                    className={`p-4 rounded-2xl border text-center transition-all ${wizardData.categoryKey === cat.id ? 'bg-amber-500/20 border-amber-500 text-amber-500 ring-2 ring-amber-500' : 'bg-slate-500/10 border-slate-500/30 hover:bg-slate-500/20'}`}
+                  >
+                    <span className="block text-3xl mb-2">{cat.label.split(' ')[0]}</span>
+                    <span className={'font-bold ' + currentFontConfig.smallClass}>{cat.label.split(' ')[1]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* KROK 2: SZCZEGÓŁY CELU */}
+            {goalWizardStep === 2 && wizardData.categoryKey && (
+              <div className="space-y-4 animate-fadeIn">
+                {/* Dynamiczny wybór typu z dostosowaną etykietą */}
+                {wizardData.categoryKey !== 'book' && (
+                  <div>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
+                      {wizardData.categoryKey === 'sport' ? 'Dyscyplina sportowa' :
+                       wizardData.categoryKey === 'study' ? 'Rodzaj nauki' :
+                       wizardData.categoryKey === 'health' ? 'Nawyk zdrowotny' : 'Typ pracy / kategoria'}
+                    </label>
+                    <select 
+                      value={wizardData.type} 
+                      onChange={(e) => setWizardData({...wizardData, type: e.target.value})} 
+                      className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg}
+                    >
+                      <option value="">-- Wybierz --</option>
+                      {GOAL_CATEGORIES_CONFIG[wizardData.categoryKey].types.map(t => (
+                        <option key={t.id} value={t.id}>{t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                
+                {/* Dynamiczny tytuł */}
+                <div>
+                  <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
+                    {wizardData.categoryKey === 'book' ? 'Tytuł książki (np. "Wiedźmin: Ostatnie Życzenie")' :
+                     wizardData.categoryKey === 'sport' ? 'Cel sportowy (np. "Bieg dookoła jeziora")' :
+                     wizardData.categoryKey === 'study' ? 'Czego się uczysz? (np. "Podstawy Pythona")' :
+                     wizardData.categoryKey === 'health' ? 'Nazwa wyzwania (np. "Więcej wody", "Detoks")' :
+                     'Nazwa projektu / celu (np. "Nowa aplikacja")'}
+                  </label>
+                  <input type="text" value={wizardData.title} onChange={(e) => setWizardData({...wizardData, title: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} placeholder="Wpisz nazwę..." />
+                </div>
+
+                {/* Dostosowany tekst dla przełącznika "Daily" */}
+                <div className="pt-2 border-t border-slate-500/20">
+                  <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input type="checkbox" checked={wizardData.isDaily} onChange={(e) => setWizardData({...wizardData, isDaily: e.target.checked})} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
+                    <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>
+                      {wizardData.categoryKey === 'health' ? 'Cel codzienny (wartość odnawia się każdego dnia)' :
+                       wizardData.categoryKey === 'book' ? 'Czytam określoną ilość dziennie (brak sztywnego deadline\'u)' :
+                       'Zadanie dzienne (odnawia się o wyznaczonej godzinie)'}
+                    </span>
+                  </label>
+                </div>
+
+                {/* Dynamiczna wartość docelowa z jednostką */}
+                <div>
+                  <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
+                    {wizardData.categoryKey === 'book' ? 'Liczba stron do przeczytania (łącznie)' :
+                     wizardData.type ? `Rozmiar wyzwania (w: ${getUnitForType(wizardData.type)})` : 'Rozmiar wyzwania (najpierw wybierz typ wyżej)'}
+                  </label>
+                  <input type="number" step="any" min="0.1" value={wizardData.target} onChange={(e) => setWizardData({...wizardData, target: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} placeholder={wizardData.categoryKey === 'book' ? "np. 320" : "np. 50"} />
+                </div>
+                
+                {/* Dynamiczny Deadline */}
+                {!wizardData.isDaily && (
+                  <div>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
+                      {wizardData.categoryKey === 'book' ? 'Czas na przeczytanie (Deadline)' : 'Czas na realizację (Deadline)'}
+                    </label>
+                    <input type="date" value={wizardData.dueDate} onChange={(e) => setWizardData({...wizardData, dueDate: e.target.value})} className={'w-full max-w-full box-border appearance-none rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} style={{ WebkitAppearance: 'none' }} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* KROK 3: PROPOZYCJA ZADANIA */}
+            {goalWizardStep === 3 && (
+              <div className="text-center space-y-6 animate-fadeIn py-4">
+                <div className="w-16 h-16 mx-auto bg-emerald-500/20 text-emerald-500 flex items-center justify-center rounded-2xl border border-emerald-500/40">
+                  <Zap className="w-8 h-8" />
+                </div>
+                <div>
+                   <h4 className={'font-bold mb-2 ' + currentFontConfig.headerClass + ' ' + tStyle.titleText}>Połącz Cel z Nawykami</h4>
+                   <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
+                      Cele łatwiej zrealizować, rozbijając je na codzienne lub regularne zadania. Czy chcesz ułożyć rutynę dla celu: <strong className="text-amber-500">"{wizardData.title}"</strong>?
+                   </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-4">
+                   <button onClick={() => { 
+                       setWizardData({...wizardData, createTask: false}); 
+                       finalizeWizard(false); 
+                   }} className={'py-3.5 rounded-2xl font-bold ' + tStyle.modalBtnBg}>
+                     Nie, dziękuję
+                   </button>
+                   <button onClick={() => { 
+                       setWizardData({...wizardData, createTask: true}); 
+                       setGoalWizardStep(4);
+                   }} className={'py-3.5 rounded-2xl font-bold bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-500/20'}>
+                     Jasne, utwórz!
+                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* KROK 4: KONFIGURACJA ZADANIA */}
+            {goalWizardStep === 4 && (
+              <div className="space-y-4 animate-fadeIn">
+                 <div>
+                  <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
+                    Jak nazwiesz to konkretne zadanie w liście "Dzisiaj"?
+                  </label>
+                  <input type="text" value={wizardData.taskTitle} onChange={(e) => setWizardData({...wizardData, taskTitle: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                </div>
+
+                <div>
+                  <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
+                    {wizardData.categoryKey === 'book' ? 'Ile stron planujesz przeczytać na jednej sesji?' :
+                     wizardData.categoryKey === 'sport' ? `Cel na jeden trening (w: ${getUnitForType(wizardData.type)})` :
+                     wizardData.categoryKey === 'study' ? `Wartość na jedną sesję nauki (w: ${getUnitForType(wizardData.type)})` :
+                     `Wartość docelowa na jedno zadanie (w: ${getUnitForType(wizardData.type)})`}
+                  </label>
+                  <input type="number" step="any" min="0" placeholder={wizardData.categoryKey === 'book' ? "np. 20" : "np. 15 (opcjonalnie)"} value={wizardData.taskAmount} onChange={(e) => setWizardData({...wizardData, taskAmount: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                </div>
+
+                <div>
+                  <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Trudność zadania (wpływa na punkty)</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button type="button" onClick={() => setWizardData({...wizardData, taskDifficulty: 'easy'})} className={'py-2.5 ' + currentFontConfig.smallClass + ' rounded-xl transition-all ' + (wizardData.taskDifficulty === 'easy' ? tStyle.optSelected : tStyle.optUnselected)}>Łatwy</button>
+                    <button type="button" onClick={() => setWizardData({...wizardData, taskDifficulty: 'medium'})} className={'py-2.5 ' + currentFontConfig.smallClass + ' rounded-xl transition-all ' + (wizardData.taskDifficulty === 'medium' ? tStyle.optSelectedWarning : tStyle.optUnselected)}>Średni</button>
+                    <button type="button" onClick={() => setWizardData({...wizardData, taskDifficulty: 'hard'})} className={'py-2.5 ' + currentFontConfig.smallClass + ' rounded-xl transition-all ' + (wizardData.taskDifficulty === 'hard' ? tStyle.optSelectedDanger : tStyle.optUnselected)}>Trudny</button>
+                  </div>
+                </div>
+
+                {/* Ukrywamy pole minut, jeśli jednostką dla tego celu jest już czas */}
+                {getUnitForType(wizardData.type) !== 'godz.' && getUnitForType(wizardData.type) !== 'min' && (
+                  <div>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Czas trwania sesji (uruchamia stoper w minutach, opcjonalnie)</label>
+                    <input type="number" placeholder="np. 30" value={wizardData.taskDuration} onChange={(e) => setWizardData({...wizardData, taskDuration: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                  </div>
+                )}
+
+                <div>
+                  <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
+                    {wizardData.categoryKey === 'sport' ? 'Jak często będziesz trenować?' :
+                     wizardData.categoryKey === 'book' ? 'Jak często będziesz czytać?' :
+                     'Jak często chcesz nad tym pracować?'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setWizardData({...wizardData, taskRepeat: 'daily'})} className={'py-3 rounded-xl transition-all font-semibold ' + (wizardData.taskRepeat === 'daily' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500 ring-2 ring-emerald-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Codziennie</button>
+                    <button type="button" onClick={() => setWizardData({...wizardData, taskRepeat: 'interval'})} className={'py-3 rounded-xl transition-all font-semibold ' + (wizardData.taskRepeat === 'interval' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500 ring-2 ring-emerald-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Co 2 dni</button>
+                    <button type="button" onClick={() => setWizardData({...wizardData, taskRepeat: 'once'})} className={'col-span-2 py-3 rounded-xl transition-all font-semibold ' + (wizardData.taskRepeat === 'once' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500 ring-2 ring-emerald-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Cel krótkoterminowy (Jednorazowo)</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* STOPKA MODALA Z PRZYCISKIEM DALEJ */}
+            {(goalWizardStep === 1 || goalWizardStep === 2 || goalWizardStep === 4) && (
+              <div className="mt-6 pt-4 border-t border-slate-500/20">
+                 <button 
+                   onClick={handleWizardNext}
+                   disabled={goalWizardStep === 1 && !wizardData.categoryKey}
+                   className={'w-full py-4 rounded-2xl font-bold transition-transform ' + (goalWizardStep === 4 ? 'bg-emerald-500 text-slate-900 shadow-emerald-500/30' : 'bg-amber-500 text-slate-900 shadow-amber-500/30') + ' disabled:opacity-50 disabled:active:scale-100 active:scale-95 shadow-lg'}
+                 >
+                   {goalWizardStep === 4 ? 'Zakończ i zapisz' : 'Dalej'}
+                 </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
 
       {showTrophiesModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[120] overflow-y-auto">
@@ -2666,87 +2995,6 @@ export default function App() {
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowAddActivityModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
                 <button type="submit" className={'flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>Zapisz</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showAddGoalModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
-            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>Dodaj nowy cel</h3>
-            <form onSubmit={addGoal} className="space-y-4">
-              <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Tytuł / Nazwa celu</label>
-                <input type="text" placeholder="np. Przeczytać książkę" value={newGoalTitle} onChange={(e) => setNewGoalTitle(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
-              </div>
-              <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Kategoria (Obszar życia)</label>
-                <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
-                  {categories.map((cat) => (
-                    <button key={cat.id} type="button" onClick={() => setNewGoalCategory(cat.label.replace(/[^a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ ]/g, '').trim())} className={'py-2.5 px-3 ' + currentFontConfig.smallClass + ' rounded-xl text-left transition-all ' + (newGoalCategory === cat.label.replace(/[^a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ ]/g, '').trim() ? tStyle.optSelected : tStyle.optUnselected)}>{cat.label}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Typ monitorowania</label>
-                <select 
-                  value={newGoalType} 
-                  onChange={(e) => setNewGoalType(e.target.value)} 
-                  className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg}
-                >
-                  <optgroup label="🏃 Sport">
-                    <option value="steps">Kroki (liczba kroków)</option>
-                    <option value="run">Bieganie (km)</option>
-                    <option value="bike">Rower (km)</option>
-                    <option value="walk_km">Spacer (km)</option>
-                    <option value="gym">Siłownia (minuty)</option>
-                    <option value="pushups">Pompki (powtórzenia)</option>
-                    <option value="pullups">Drążek (powtórzenia)</option>
-                    <option value="squats">Przysiady (powtórzenia)</option>
-                    <option value="situps">Brzuszki (powtórzenia)</option>
-                  </optgroup>
-                  <optgroup label="🧠 Umysł">
-                    <option value="read_book">Książka (strony)</option>
-                    <option value="read_chapters">Książka (rozdziały)</option>
-                    <option value="study">Nauka (godziny)</option>
-                  </optgroup>
-                  <optgroup label="🌿 Zdrowie">
-                    <option value="no_sweets">Dni bez słodyczy (dni)</option>
-                  </optgroup>
-                </select>
-              </div>
-              
-              <div className="pt-2 border-t border-slate-500/20">
-                <label className="flex items-center gap-2 cursor-pointer mb-2">
-                  <input type="checkbox" checked={newGoalIsDaily} onChange={(e) => setNewGoalIsDaily(e.target.checked)} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
-                  <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>Codziennie (odnawia się każdego dnia)</span>
-                </label>
-              </div>
-
-              {(!newGoalIsDaily && (newGoalType === 'read_book' || newGoalType === 'read_chapters' || newGoalType === 'study' || newGoalType === 'no_sweets')) && (
-                <div>
-                  <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Już zrealizowane (start)</label>
-                  <input type="number" step="any" min="0" value={newGoalCurrentPage} onChange={(e) => setNewGoalCurrentPage(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
-                </div>
-              )}
-              
-              <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Docelowa wartość {newGoalIsDaily ? '(na dzień)' : ''}</label>
-                <input type="number" step="any" placeholder={newGoalType === 'study' ? 'np. 50' : newGoalType === 'read_book' ? 'np. 300' : newGoalType === 'read_chapters' ? 'np. 10' : newGoalType === 'no_sweets' ? 'np. 30' : 'np. 100000'} value={newGoalTarget} onChange={(e) => setNewGoalTarget(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
-              </div>
-              <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + (newGoalIsDaily ? 'opacity-50 ' : '') + tStyle.subText}>Termin realizacji (opcjonalnie)</label>
-                <input disabled={newGoalIsDaily} type="date" value={newGoalDueDate} onChange={(e) => setNewGoalDueDate(e.target.value)} className={'w-full max-w-full box-border appearance-none rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg + (newGoalIsDaily ? ' opacity-50 cursor-not-allowed' : '')} style={{ WebkitAppearance: 'none' }} />
-              </div>
-              <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Komentarz / Motywacja (opcjonalnie)</label>
-                <input type="text" placeholder="np. Konsekwencja kluczem do sukcesu" value={newGoalComment} onChange={(e) => setNewGoalComment(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowAddGoalModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
-                <button type="submit" className={'flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>Dodaj</button>
               </div>
             </form>
           </div>

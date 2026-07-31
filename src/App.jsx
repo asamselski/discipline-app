@@ -3,7 +3,9 @@ import { QUOTES } from './data/quotes';
 import { 
   CheckCircle2, Circle, Plus, Trophy, Zap, 
   Trash2, Calendar as CalendarIcon, Check, Play, Pause, Quote, X, User, Settings, ShieldCheck, Sun, Moon, Sparkles, Flame, MessageSquare, AlertTriangle, Edit3, Target, Activity, Dumbbell, Footprints, Utensils, Brain, ChevronDown, GripVertical, Bell, Laptop, BookOpen, Archive, RotateCcw,
-  ChevronLeft, ChevronRight, PieChart, CheckSquare, Type, Clock
+  ChevronLeft, ChevronRight, PieChart, CheckSquare, Type, Clock,
+  /* IKONY DO TROFEÓW */
+  Award, Share2, Lock
 } from 'lucide-react';
 
 const parseLocalDate = (dateStr) => {
@@ -63,6 +65,25 @@ const RANKS = [
   { minLevel: 41, name: 'Tytan Konsekwencji 🗿' },
   { minLevel: 46, name: 'Absolutny Mistrz Dyscypliny ⚡' }
 ];
+
+/* DEFINICJE TROFEÓW */
+const TROPHIES = [
+  { id: 'bronze_task', title: 'Przebudzenie', desc: 'Wykonaj swoje pierwsze zadanie', rank: 'bronze' },
+  { id: 'bronze_workout', title: 'Rozgrzewka', desc: 'Zarejestruj pierwszą aktywność', rank: 'bronze' },
+  { id: 'silver_level10', title: 'Wędrowiec', desc: 'Osiągnij 10 poziom', rank: 'silver' },
+  { id: 'silver_tasks50', title: 'Siła Nawyku', desc: 'Wykonaj łącznie 50 zadań', rank: 'silver' },
+  { id: 'gold_level30', title: 'Elita', desc: 'Osiągnij 30 poziom', rank: 'gold' },
+  { id: 'gold_workouts50', title: 'Maszyna', desc: 'Zarejestruj 50 aktywności', rank: 'gold' },
+  { id: 'platinum_master', title: 'Mistrz Dyscypliny', desc: 'Zdobądź wszystkie pozostałe trofea', rank: 'platinum' }
+];
+
+const getTrophyColors = (rank, isEarned) => {
+  if (!isEarned) return 'bg-slate-500/10 border-slate-500/20 text-slate-500 opacity-60 grayscale';
+  if (rank === 'bronze') return 'bg-orange-700/20 border-orange-600/50 text-orange-500 shadow-inner';
+  if (rank === 'silver') return 'bg-slate-300/20 border-slate-300/50 text-slate-300 shadow-inner';
+  if (rank === 'gold') return 'bg-amber-500/20 border-amber-500/50 text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]';
+  if (rank === 'platinum') return 'bg-cyan-400/20 border-cyan-400/50 text-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.4)] ring-1 ring-cyan-400';
+};
 
 const getLevelInfo = (pkt) => {
   let level = 1;
@@ -205,6 +226,13 @@ export default function App() {
     const savedNotes = localStorage.getItem('discipline_notes');
     return savedNotes ? JSON.parse(savedNotes) : {};
   });
+
+  /* STANY TROFEÓW */
+  const [earnedTrophies, setEarnedTrophies] = useState(() => {
+    const saved = localStorage.getItem('discipline_trophies');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [newTrophyModal, setNewTrophyModal] = useState(null);
 
   const [selectedMonthDate, setSelectedMonthDate] = useState(() => new Date());
   const [taskPickerDate, setTaskPickerDate] = useState(() => new Date());
@@ -574,7 +602,6 @@ export default function App() {
     if (oldWorkout) {
       let goalsCopy = [...goals];
 
-      // Odejmujemy starą wartość od starego celu
       if (oldWorkout.goalId) {
         const oldGoal = goalsCopy.find(g => g.id === oldWorkout.goalId);
         if (oldGoal && !oldGoal.isDaily) {
@@ -582,7 +609,6 @@ export default function App() {
         }
       }
 
-      // Dodajemy nową wartość do nowego (lub tego samego) celu
       if (updatedWorkout.goalId) {
         const newGoal = goalsCopy.find(g => g.id === updatedWorkout.goalId);
         if (newGoal && !newGoal.isDaily) {
@@ -824,6 +850,68 @@ export default function App() {
 
   const totalPKT = calculateTotalPKTWithPenalties();
   const levelInfo = getLevelInfo(totalPKT);
+
+  /* EFEKT SPRAWDZAJĄCY ZDOBYTE TROFEA */
+  useEffect(() => {
+    let totalTaskCompletions = 0;
+    tasks.forEach(t => {
+      if(t.repeat && t.repeat !== 'once') {
+        totalTaskCompletions += Object.values(t.completedDates || {}).filter(Boolean).length;
+      } else if (t.isCompleted) {
+        totalTaskCompletions++;
+      }
+    });
+    
+    const totalWorkoutsCount = workouts.length;
+    const currentLevel = levelInfo.level;
+
+    const newlyEarned = [];
+    const updatedTrophies = { ...earnedTrophies };
+
+    const checkAndAward = (id, condition) => {
+      if (!updatedTrophies[id] && condition) {
+        updatedTrophies[id] = todayStr;
+        newlyEarned.push(id);
+      }
+    };
+
+    checkAndAward('bronze_task', totalTaskCompletions >= 1);
+    checkAndAward('bronze_workout', totalWorkoutsCount >= 1);
+    checkAndAward('silver_level10', currentLevel >= 10);
+    checkAndAward('silver_tasks50', totalTaskCompletions >= 50);
+    checkAndAward('gold_level30', currentLevel >= 30);
+    checkAndAward('gold_workouts50', totalWorkoutsCount >= 50);
+
+    const earnedCount = Object.keys(updatedTrophies).length;
+    checkAndAward('platinum_master', earnedCount >= 6 && !updatedTrophies['platinum_master']);
+
+    if (newlyEarned.length > 0) {
+      setEarnedTrophies(updatedTrophies);
+      localStorage.setItem('discipline_trophies', JSON.stringify(updatedTrophies));
+      const latestTrophy = TROPHIES.find(t => t.id === newlyEarned[newlyEarned.length - 1]);
+      setNewTrophyModal(latestTrophy);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, workouts, levelInfo.level, todayStr]);
+
+  const handleShareTrophy = async (trophy) => {
+    const rankName = trophy.rank === 'platinum' ? 'Platynowe' : trophy.rank === 'gold' ? 'Złote' : trophy.rank === 'silver' ? 'Srebrne' : 'Brązowe';
+    const textToShare = `Właśnie odblokowałem ${rankName} trofeum: "${trophy.title}" w mojej drodze po samodyscyplinę! 🏆🔥`;
+    
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: 'Kolejne trofeum odblokowane!',
+                text: textToShare,
+            });
+        } catch (err) {
+            console.log('Share canceled');
+        }
+    } else {
+        navigator.clipboard.writeText(textToShare);
+        alert('Tekst skopiowany do schowka! Możesz go teraz wkleić w dowolnym miejscu.');
+    }
+  };
 
   useEffect(() => {
     const currentLevel = levelInfo.level;
@@ -1567,6 +1655,29 @@ export default function App() {
             </button>
           </header>
 
+          <div className={'p-6 rounded-3xl border shadow-sm mb-6 ' + tStyle.cardBg}>
+            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-500/20">
+              <Award className="w-6 h-6 text-amber-500" />
+              <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>Moja Gablota Trofeów</h3>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {TROPHIES.map(trophy => {
+                  const isEarned = Boolean(earnedTrophies[trophy.id]);
+                  const colors = getTrophyColors(trophy.rank, isEarned);
+                  return (
+                      <div key={trophy.id} className={`p-4 rounded-2xl border flex flex-col items-center text-center transition-all ${colors}`}>
+                          <div className="mb-3 relative">
+                              {isEarned ? <Award className="w-8 h-8" /> : <Lock className="w-8 h-8 opacity-50" />}
+                          </div>
+                          <span className="font-bold text-sm mb-1">{trophy.title}</span>
+                          <span className="text-[10px] opacity-70 leading-snug">{trophy.desc}</span>
+                          {isEarned && <span className="text-[9px] mt-3 font-mono opacity-60 bg-slate-900/20 px-2 py-0.5 rounded">{earnedTrophies[trophy.id]}</span>}
+                      </div>
+                  )
+              })}
+            </div>
+          </div>
+
           <div className={'p-5 md:p-6 rounded-3xl border mb-6 shadow-sm ' + tStyle.cardBg}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -1679,7 +1790,45 @@ export default function App() {
         </button>
       </nav>
 
-      {/* --- MODALE RENDEROWANE TYLKO RAZ POZA ZAKŁADKAMI --- */}
+      {/* --- MODALE --- */}
+
+      {newTrophyModal && (
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-6 z-[500] animate-fadeIn">
+          <div className="max-w-md w-full text-center">
+             <div className={`mx-auto w-32 h-32 rounded-full flex items-center justify-center mb-8 animate-bounce shadow-2xl ${
+                 newTrophyModal.rank === 'platinum' ? 'bg-cyan-500/20 text-cyan-400 shadow-cyan-500/50 ring-4 ring-cyan-400' :
+                 newTrophyModal.rank === 'gold' ? 'bg-amber-500/20 text-amber-500 shadow-amber-500/50 ring-4 ring-amber-500' :
+                 newTrophyModal.rank === 'silver' ? 'bg-slate-300/20 text-slate-300 shadow-slate-300/50 ring-4 ring-slate-300' :
+                 'bg-orange-700/20 text-orange-500 shadow-orange-700/50 ring-4 ring-orange-500'
+             }`}>
+                <Trophy className="w-16 h-16" />
+             </div>
+             
+             <h2 className="text-4xl md:text-5xl font-bold text-white mb-3 tracking-tight">Gratulacje, {userName}!</h2>
+             <p className={`text-lg mb-8 uppercase tracking-widest font-bold ${
+                 newTrophyModal.rank === 'platinum' ? 'text-cyan-400' :
+                 newTrophyModal.rank === 'gold' ? 'text-amber-500' :
+                 newTrophyModal.rank === 'silver' ? 'text-slate-300' : 'text-orange-500'
+             }`}>
+                Odblokowano {newTrophyModal.rank === 'platinum' ? 'platynowe' : newTrophyModal.rank === 'gold' ? 'złote' : newTrophyModal.rank === 'silver' ? 'srebrne' : 'brązowe'} trofeum
+             </p>
+             
+             <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-700/50 mb-8 shadow-inner">
+                <h3 className="text-2xl font-bold text-white mb-2">{newTrophyModal.title}</h3>
+                <p className="text-slate-400 text-lg">{newTrophyModal.desc}</p>
+             </div>
+             
+             <div className="flex flex-col gap-4">
+                 <button onClick={() => handleShareTrophy(newTrophyModal)} className="w-full py-4 rounded-2xl bg-emerald-500 text-slate-950 font-bold text-lg flex items-center justify-center gap-2 hover:bg-emerald-400 transition-transform active:scale-95 shadow-lg shadow-emerald-500/20">
+                    <Share2 className="w-6 h-6" /> Udostępnij sukces
+                 </button>
+                 <button onClick={() => setNewTrophyModal(null)} className="w-full py-4 rounded-2xl bg-slate-800 border border-slate-700 text-white font-bold text-lg hover:bg-slate-700 transition-colors">
+                    Odbierz i zamknij
+                 </button>
+             </div>
+          </div>
+        </div>
+      )}
 
       {showArchiveModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[120] overflow-y-auto">
@@ -2059,7 +2208,6 @@ export default function App() {
         </div>
       )}
 
-      {/* --- NOWE MODALE DLA EDYCJI AKTYWNOŚCI --- */}
       {editingWorkout && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
@@ -2187,7 +2335,7 @@ export default function App() {
                     <option value="read_book">Książka (strony)</option>
                   </optgroup>
                   <optgroup label="🌿 Zdrowie">
-                    <option value="steps">Kroki (liczba)</option>
+                    <option value="steps">Kroki (liczba kroków)</option>
                     <option value="no_sweets">Dni bez słodyczy (dni)</option>
                   </optgroup>
                 </select>

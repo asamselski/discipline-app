@@ -4,7 +4,7 @@ import {
   CheckCircle2, Circle, Plus, Trophy, Zap, 
   Trash2, Calendar as CalendarIcon, Check, Play, Pause, Quote, X, User, Settings, ShieldCheck, Sun, Moon, Sparkles, Flame, MessageSquare, AlertTriangle, Edit3, Target, Activity, Dumbbell, Footprints, Utensils, Brain, ChevronDown, GripVertical, Bell, Laptop, BookOpen, Archive, RotateCcw,
   ChevronLeft, ChevronRight, PieChart, CheckSquare, Type, Clock,
-  Award, Share2, Lock
+  Award, Share2, Lock, MoreVertical
 } from 'lucide-react';
 
 const parseLocalDate = (dateStr) => {
@@ -35,9 +35,10 @@ const getAppDayString = (customResetTime) => {
 
 const INITIAL_CATEGORIES = [
   { id: 'Zdrowie', label: '🌿 Zdrowie', color: 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold border-emerald-500/50' },
-  { id: 'Rozwój', label: '🧠 Rozwój', color: 'bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold border-sky-500/50' },
+  { id: 'Sport', label: '🏃 Sport', color: 'bg-orange-500/20 text-orange-600 dark:text-orange-400 font-bold border-orange-500/50' },
+  { id: 'Książka', label: '📖 Książka', color: 'bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold border-sky-500/50' },
+  { id: 'Nauka', label: '🧠 Nauka', color: 'bg-purple-500/20 text-purple-600 dark:text-purple-400 font-bold border-purple-500/50' },
   { id: 'Praca', label: '💼 Praca', color: 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-500/50' },
-  { id: 'Dom', label: '🏠 Dom', color: 'bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold border-amber-500/50' },
   { id: 'Ogólne', label: '🎯 Ogólne', color: 'bg-slate-500/20 text-slate-600 dark:text-slate-400 font-bold border-slate-500/50' },
 ];
 
@@ -88,7 +89,6 @@ const TROPHIES = [
   { id: 'platinum_master', title: 'Mistrz Dyscypliny', desc: 'Zdobądź wszystkie pozostałe trofea', rank: 'platinum' }
 ];
 
-// --- KONFIGURACJA KREATORA CELÓW ---
 const GOAL_CATEGORIES_CONFIG = {
   health: { id: 'health', label: '🌿 Zdrowie', dbCat: 'Zdrowie',
     types: [
@@ -97,7 +97,7 @@ const GOAL_CATEGORIES_CONFIG = {
       { id: 'sleep', label: 'Sen min. 7h (dni)' }
     ]
   },
-  sport: { id: 'sport', label: '🏃 Sport', dbCat: 'Zdrowie',
+  sport: { id: 'sport', label: '🏃 Sport', dbCat: 'Sport',
     types: [
       { id: 'walk_km', label: 'Marsz (km)' },
       { id: 'run', label: 'Bieganie (km)' },
@@ -109,8 +109,8 @@ const GOAL_CATEGORIES_CONFIG = {
       { id: 'situps', label: 'Brzuszki (powt.)' }
     ]
   },
-  book: { id: 'book', label: '📖 Książka', dbCat: 'Rozwój', types: [{ id: 'read_book', label: 'Liczba stron' }] },
-  study: { id: 'study', label: '🧠 Nauka', dbCat: 'Rozwój',
+  book: { id: 'book', label: '📖 Książka', dbCat: 'Książka', types: [{ id: 'read_book', label: 'Liczba stron' }] },
+  study: { id: 'study', label: '🧠 Nauka', dbCat: 'Nauka',
     types: [
       { id: 'study', label: 'Nauka ogólna (godziny)' },
       { id: 'language', label: 'Język obcy (lekcje)' },
@@ -212,7 +212,18 @@ export default function App() {
 
   const [categories, setCategories] = useState(() => {
     const saved = localStorage.getItem('discipline_categories');
-    return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const finalCats = [...INITIAL_CATEGORIES];
+      const defaultIds = ['Zdrowie', 'Rozwój', 'Praca', 'Dom', 'Ogólne', 'Sport', 'Książka', 'Nauka'];
+      parsed.forEach(c => {
+        if (!defaultIds.includes(c.id) && !finalCats.some(fc => fc.id === c.id)) {
+          finalCats.push(c);
+        }
+      });
+      return finalCats;
+    }
+    return INITIAL_CATEGORIES;
   });
 
   const [newCatLabel, setNewCatLabel] = useState('');
@@ -221,31 +232,21 @@ export default function App() {
   const [showTrophiesModal, setShowTrophiesModal] = useState(false);
   const [showRanksModal, setShowRanksModal] = useState(false);
 
+  const [formErrors, setFormErrors] = useState({});
+  const clearError = (field) => setFormErrors(prev => ({ ...prev, [field]: false }));
+
   const [blockOrder, setBlockOrder] = useState(() => {
     const saved = localStorage.getItem('discipline_block_order');
-    return saved ? JSON.parse(saved) : INITIAL_CATEGORIES.map(c => c.id);
+    if (saved) {
+      let parsed = JSON.parse(saved);
+      parsed = parsed.filter(id => INITIAL_CATEGORIES.some(c => c.id === id));
+      INITIAL_CATEGORIES.forEach(c => {
+         if (!parsed.includes(c.id)) parsed.push(c.id);
+      });
+      return parsed;
+    }
+    return INITIAL_CATEGORIES.map(c => c.id);
   });
-
-  const [isLayoutEditing, setIsLayoutEditing] = useState(false);
-  const pressTimer = useRef(null);
-
-  const startLongPress = () => {
-    pressTimer.current = setTimeout(() => {
-      setIsLayoutEditing(true);
-      if (navigator.vibrate) navigator.vibrate(60);
-    }, 500);
-  };
-  const cancelLongPress = () => clearTimeout(pressTimer.current);
-
-  const moveBlock = (index, direction) => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= blockOrder.length) return;
-    const updated = [...blockOrder];
-    const [moved] = updated.splice(index, 1);
-    updated.splice(newIndex, 0, moved);
-    setBlockOrder(updated);
-    localStorage.setItem('discipline_block_order', JSON.stringify(updated));
-  };
 
   const [collapsedSections, setCollapsedSections] = useState(() => {
     const saved = localStorage.getItem('discipline_collapsed_sections');
@@ -269,7 +270,7 @@ export default function App() {
     if (savedTasks) return JSON.parse(savedTasks);
     return [
       { id: 1, title: 'Trening fizyczny', category: 'Zdrowie', goalId: null, pkt: 35, difficulty: 'hard', repeat: 'daily', duration: 30, hasReminder: false, reminderTime: '08:00', createdAt: getAppDayString(), dueDate: getAppDayString(), isCompleted: false, completedDates: {} },
-      { id: 3, title: 'Nauka programowania', category: 'Rozwój', goalId: null, pkt: 25, difficulty: 'medium', repeat: 'daily', duration: 45, hasReminder: false, reminderTime: '08:00', createdAt: getAppDayString(), dueDate: getAppDayString(), isCompleted: false, completedDates: {} }
+      { id: 3, title: 'Nauka programowania', category: 'Nauka', goalId: null, pkt: 25, difficulty: 'medium', repeat: 'daily', duration: 45, hasReminder: false, reminderTime: '08:00', createdAt: getAppDayString(), dueDate: getAppDayString(), isCompleted: false, completedDates: {} }
     ];
   });
 
@@ -283,7 +284,7 @@ export default function App() {
     const savedGoals = localStorage.getItem('discipline_goals');
     if (savedGoals) return JSON.parse(savedGoals);
     return [
-      { id: 302, title: 'Wiedźmin: Ostatnie Życzenie', category: 'Rozwój', type: 'read_book', target: 332, currentPage: 120, dueDate: getAppDayString(), comment: '', isDaily: false }
+      { id: 302, title: 'Wiedźmin: Ostatnie Życzenie', category: 'Książka', type: 'read_book', target: 332, currentPage: 120, dueDate: getAppDayString(), comment: '', isDaily: false }
     ];
   });
 
@@ -318,7 +319,6 @@ export default function App() {
   const [newWorkoutAmount, setNewWorkoutAmount] = useState('');
   const [newWorkoutGoalId, setNewWorkoutGoalId] = useState('');
 
-  // --- STAN KREATORA CELÓW (WIZARD) ---
   const [goalWizardStep, setGoalWizardStep] = useState(0); 
   const [wizardData, setWizardData] = useState({
     categoryKey: '',  
@@ -342,6 +342,7 @@ export default function App() {
       createTask: false, taskRepeat: 'daily', taskTitle: '',
       taskAmount: '', taskDifficulty: 'medium', taskDuration: ''
     });
+    setFormErrors({}); 
     setGoalWizardStep(1);
     setShowAddGoalModal(true); 
   };
@@ -377,6 +378,7 @@ export default function App() {
   const [showAddActivityModal, setShowAddActivityModal] = useState(false);
   const [showAllQuotesModal, setShowAllQuotesModal] = useState(false);
   const [showDeleteNoteConfirm, setShowDeleteNoteConfirm] = useState(false);
+  const [openMenuTaskId, setOpenMenuTaskId] = useState(null);
     
   const [selectedDate, setSelectedDate] = useState(() => getAppDayString());
 
@@ -385,6 +387,13 @@ export default function App() {
     return saved ? parseInt(saved, 10) : 1;
   });
   const [levelUpModalData, setLevelUpModalData] = useState(null);
+
+  // Zamykanie menu po kliknięciu poza elementem
+  useEffect(() => {
+    const handleClickOutside = () => setOpenMenuTaskId(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'profile' && chartScrollRef.current) {
@@ -472,9 +481,10 @@ export default function App() {
   const getCategoryTheme = (catName) => {
     const map = {
       'Zdrowie': { bg: 'bg-emerald-500/10 dark:bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-400', itemBg: 'bg-emerald-500/5', itemBorder: 'border-emerald-500/20', itemDoneBg: 'bg-emerald-500/20', iconText: 'text-emerald-500' },
-      'Rozwój': { bg: 'bg-sky-500/10 dark:bg-sky-500/10', border: 'border-sky-500/20', text: 'text-sky-700 dark:text-sky-400', itemBg: 'bg-sky-500/5', itemBorder: 'border-sky-500/20', itemDoneBg: 'bg-sky-500/20', iconText: 'text-sky-500' },
+      'Sport': { bg: 'bg-orange-500/10 dark:bg-orange-500/10', border: 'border-orange-500/20', text: 'text-orange-700 dark:text-orange-400', itemBg: 'bg-orange-500/5', itemBorder: 'border-orange-500/20', itemDoneBg: 'bg-orange-500/20', iconText: 'text-orange-500' },
+      'Książka': { bg: 'bg-sky-500/10 dark:bg-sky-500/10', border: 'border-sky-500/20', text: 'text-sky-700 dark:text-sky-400', itemBg: 'bg-sky-500/5', itemBorder: 'border-sky-500/20', itemDoneBg: 'bg-sky-500/20', iconText: 'text-sky-500' },
+      'Nauka': { bg: 'bg-purple-500/10 dark:bg-purple-500/10', border: 'border-purple-500/20', text: 'text-purple-700 dark:text-purple-400', itemBg: 'bg-purple-500/5', itemBorder: 'border-purple-500/20', itemDoneBg: 'bg-purple-500/20', iconText: 'text-purple-500' },
       'Praca': { bg: 'bg-indigo-500/10 dark:bg-indigo-500/10', border: 'border-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-400', itemBg: 'bg-indigo-500/5', itemBorder: 'border-indigo-500/20', itemDoneBg: 'bg-indigo-500/20', iconText: 'text-indigo-500' },
-      'Dom': { bg: 'bg-amber-500/10 dark:bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-700 dark:text-amber-400', itemBg: 'bg-amber-500/5', itemBorder: 'border-amber-500/20', itemDoneBg: 'bg-amber-500/20', iconText: 'text-amber-500' },
       'Ogólne': { bg: 'bg-slate-500/10 dark:bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-700 dark:text-slate-400', itemBg: 'bg-slate-500/5', itemBorder: 'border-slate-500/20', itemDoneBg: 'bg-slate-500/20', iconText: 'text-slate-500' }
     };
     return map[catName] || map['Ogólne'];
@@ -675,7 +685,10 @@ export default function App() {
 
   const addTask = (e) => {
     e.preventDefault();
-    if (!newTaskTitle.trim()) return;
+    if (!newTaskTitle.trim()) {
+      setFormErrors(prev => ({ ...prev, newTaskTitle: true }));
+      return;
+    }
 
     const durationMin = parseInt(newTaskDuration) || 0;
     let basePkt = newTaskDifficulty === 'easy' ? 10 : newTaskDifficulty === 'hard' ? 35 : 20;
@@ -717,7 +730,10 @@ export default function App() {
   const addWorkout = (e) => {
     e.preventDefault();
     const amountVal = parseFloat(newWorkoutAmount);
-    if (isNaN(amountVal) || amountVal <= 0) return;
+    if (isNaN(amountVal) || amountVal <= 0) {
+       setFormErrors(prev => ({ ...prev, newWorkoutAmount: true }));
+       return;
+    }
     
     let calculatedPkt = 20; let unit = 'km';
     if (newWorkoutType === 'run') { calculatedPkt = Math.round(amountVal * 10); unit = 'km'; }
@@ -762,7 +778,10 @@ export default function App() {
   const saveEditedWorkout = (e) => {
     e.preventDefault();
     const amountVal = parseFloat(editingWorkout.amount);
-    if (isNaN(amountVal) || amountVal <= 0) return;
+    if (isNaN(amountVal) || amountVal <= 0) {
+      setFormErrors(prev => ({ ...prev, editingWorkoutAmount: true }));
+      return;
+    }
     
     let calculatedPkt = 20; let unit = 'km';
     if (editingWorkout.type === 'run') { calculatedPkt = Math.round(amountVal * 10); unit = 'km'; }
@@ -811,7 +830,6 @@ export default function App() {
     setEditingWorkout(null);
   };
 
-  // --- LOGIKA KREATORA CELÓW WIZARD ---
   const handleWizardNext = () => {
     if (goalWizardStep === 1 && wizardData.categoryKey) {
       if (wizardData.categoryKey === 'book') {
@@ -820,7 +838,15 @@ export default function App() {
       setGoalWizardStep(2);
     } 
     else if (goalWizardStep === 2) {
-      if (!wizardData.title.trim() || !wizardData.target || !wizardData.type) return;
+      let errs = {};
+      if (!wizardData.title.trim()) errs.wizardTitle = true;
+      if (!wizardData.target || parseFloat(wizardData.target) <= 0) errs.wizardTarget = true;
+      if (!wizardData.type && wizardData.categoryKey !== 'book') errs.wizardType = true;
+
+      if (Object.keys(errs).length > 0) {
+        setFormErrors(prev => ({...prev, ...errs}));
+        return;
+      }
       
       let generatedTaskTitle = `Praca nad: ${wizardData.title.trim()}`;
       if (wizardData.categoryKey === 'book') generatedTaskTitle = `Czytanie: ${wizardData.title.trim()}`;
@@ -830,17 +856,16 @@ export default function App() {
       setGoalWizardStep(3); 
     }
     else if (goalWizardStep === 4) {
+      if (wizardData.createTask && !wizardData.taskTitle.trim()) {
+         setFormErrors(prev => ({ ...prev, wizardTaskTitle: true }));
+         return;
+      }
       finalizeWizard(true);
     }
   };
 
   const finalizeWizard = (forceCreateTask = null) => {
     const targetVal = parseFloat(wizardData.target);
-    if (isNaN(targetVal) || targetVal <= 0) {
-        alert("Wróć do kroku 2 i podaj prawidłową wartość docelową celu.");
-        return;
-    }
-
     const catConfig = GOAL_CATEGORIES_CONFIG[wizardData.categoryKey];
     
     const newGoal = {
@@ -900,7 +925,14 @@ export default function App() {
   const addActivity = (e) => {
     e.preventDefault();
     const val = parseFloat(activityPages);
-    if (!activityGoalId || isNaN(val) || val <= 0) return;
+    if (!activityGoalId || isNaN(val) || val <= 0) {
+      setFormErrors(prev => ({
+         ...prev,
+         activityGoalId: !activityGoalId,
+         activityPages: isNaN(val) || val <= 0
+      }));
+      return;
+    }
 
     const goal = goals.find(g => g.id.toString() === activityGoalId.toString());
     if (!goal) return;
@@ -933,14 +965,23 @@ export default function App() {
 
   const saveEditedGoal = (e) => {
     e.preventDefault();
-    if (!editingGoal || !editingGoal.title.trim()) return;
+    let errs = {};
+    if (!editingGoal.title.trim()) errs.editingGoalTitle = true;
+    if (!editingGoal.target || parseFloat(editingGoal.target) <= 0) errs.editingGoalTarget = true;
+    if (Object.keys(errs).length > 0) {
+       setFormErrors(prev => ({ ...prev, ...errs }));
+       return;
+    }
     setGoals(goals.map(g => g.id === editingGoal.id ? editingGoal : g));
     setEditingGoal(null);
   };
 
   const saveEditedTask = (e) => {
     e.preventDefault();
-    if (!editingTask || !editingTask.title.trim()) return;
+    if (!editingTask || !editingTask.title.trim()) {
+       setFormErrors(prev => ({ ...prev, editingTaskTitle: true }));
+       return;
+    }
     let basePkt = editingTask.difficulty === 'easy' ? 10 : editingTask.difficulty === 'hard' ? 35 : 20;
     const durationMin = parseInt(editingTask.duration) || 0;
     const finalPkt = durationMin > 0 ? Math.max(basePkt, Math.min(50, durationMin)) : basePkt;
@@ -1192,7 +1233,6 @@ export default function App() {
     }
   }, [totalPKT, userName, userGender, lastCheckedLevel, levelInfo.level]);
 
-  // POMOCNICZE DATY DO PRZYSZŁYCH ZADAŃ
   const tomorrowDate = parseLocalDate(todayStr);
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const tomorrowStr = formatDateStr(tomorrowDate);
@@ -1201,15 +1241,23 @@ export default function App() {
   dayAfterDate.setDate(dayAfterDate.getDate() + 2);
   const dayAfterStr = formatDateStr(dayAfterDate);
 
-  const allTodayTasks = tasks.filter(t => {
+  const allTodayTasksRaw = tasks.filter(t => {
     if (t.repeat && t.repeat !== 'once') {
       return taskAppliesToDate(t, todayStr);
     }
     return t.dueDate === todayStr || (t.dueDate < todayStr && !t.isCompleted);
   });
 
+  const allTodayTasks = allTodayTasksRaw.map(t => {
+    const exists = categories.some(c => c.id === t.category);
+    return exists ? t : { ...t, category: 'Ogólne' };
+  });
+
   const upcomingTasks = tasks.filter(t => {
     if (t.repeat === 'daily') return false; 
+    
+    // ZMIANA 2: Nie pokazujemy zadań, które są już widoczne na liście "Dzisiaj"
+    if (allTodayTasksRaw.some(todayTask => todayTask.id === t.id)) return false;
     
     const appliesTomorrow = taskAppliesToDate(t, tomorrowStr) && !isTaskDoneForDate(t, tomorrowStr);
     const appliesDayAfter = taskAppliesToDate(t, dayAfterStr) && !isTaskDoneForDate(t, dayAfterStr);
@@ -1523,103 +1571,6 @@ export default function App() {
     }
   }, [currentNote, selectedDate]);
 
-  const renderCategoryBlock = (cat, blockIndex) => {
-    const blockHeaderProps = {
-      onTouchStart: startLongPress, onTouchEnd: cancelLongPress, onMouseDown: startLongPress, onMouseUp: cancelLongPress, onMouseLeave: cancelLongPress
-    };
-
-    const catTasks = allTodayTasks.filter(t => t.category === cat.id);
-    const totalItemsCount = catTasks.length;
-    const completedCatCount = catTasks.filter(t => isTaskDoneForDate(t, todayStr)).length;
-    
-    if (totalItemsCount === 0 && !isLayoutEditing) return null;
-
-    const isCollapsed = collapsedSections[cat.id];
-    const cTheme = getCategoryTheme(cat.id);
-
-    return (
-      <div key={cat.id} className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all ' + cTheme.bg + ' ' + cTheme.border + (isLayoutEditing ? ' ring-2 ring-amber-500 animate-pulse' : '')}>
-        <div className={`flex justify-between items-center select-none pb-2`}>
-          <div className="flex items-center gap-2 flex-1">
-            <div {...blockHeaderProps} className={isLayoutEditing ? 'cursor-grab active:cursor-grabbing px-2 -ml-2' : 'px-2 -ml-2 cursor-pointer'} onClick={() => isLayoutEditing ? null : toggleSection(cat.id)}>
-                <GripVertical className={`w-4 h-4 shrink-0 transition-opacity ${isLayoutEditing ? 'text-amber-500 opacity-100' : 'text-slate-400 opacity-50'}`} />
-            </div>
-            <h2 onClick={() => toggleSection(cat.id)} className={'cursor-pointer ' + currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider ' + cTheme.text}>{cat.label}</h2>
-            <span className={currentFontConfig.smallClass + ' ml-1 ' + tStyle.subText}>({completedCatCount}/{totalItemsCount})</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {isLayoutEditing && (
-              <div className="flex items-center gap-1 bg-amber-500/20 px-2 py-1 rounded-xl border border-amber-500/40" onClick={e => e.stopPropagation()}>
-                <button onClick={() => moveBlock(blockIndex, 'up')} disabled={blockIndex === 0} className="text-amber-500 hover:text-amber-700 disabled:opacity-20 text-xs px-1 font-bold">▲</button>
-                <button onClick={() => moveBlock(blockIndex, 'down')} disabled={blockIndex === blockOrder.length - 1} className="text-amber-500 hover:text-amber-700 disabled:opacity-20 text-xs px-1 font-bold">▼</button>
-              </div>
-            )}
-            <button onClick={() => toggleSection(cat.id)} className="p-2 -mr-2 cursor-pointer focus:outline-none">
-              <ChevronDown className={`w-5 h-5 transition-transform duration-300 shrink-0 ${tStyle.subText} ${isCollapsed ? '-rotate-90' : ''}`} />
-            </button>
-          </div>
-        </div>
-
-        {!isCollapsed && (
-          <div className="mt-4 pt-3 border-t border-slate-500/25 space-y-3 animate-fadeIn">
-            <div className="space-y-3">
-              {catTasks.map((task) => {
-                const isDone = isTaskDoneForDate(task, todayStr);
-                const dailyStreak = task.repeat === 'daily' ? getTaskStreak(task.id) : 0;
-                const associatedGoal = goals.find(g => g.id === task.goalId);
-
-                return (
-                  <div key={task.id} onClick={() => {
-                      setConfirmCompleteModal({ type: 'task', id: task.id, name: task.title, isDone, goalId: task.goalId, targetDate: todayStr });
-                      setCompleteTaskValue('');
-                  }} className={'flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer shadow-sm ' + (isDone ? `${cTheme.itemDoneBg} ${cTheme.itemBorder} opacity-75` : `${cTheme.itemBg} ${cTheme.itemBorder}`)}>
-                    <div className="flex items-center gap-3">
-                      {isDone ? <CheckCircle2 className={`w-6 h-6 shrink-0 ${cTheme.iconText}`} /> : <Circle className="w-6 h-6 text-slate-400 shrink-0" />}
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className={'font-medium block ' + tStyle.titleText + (isDone ? ' line-through opacity-75' : '')}>{task.title}</span>
-                          {associatedGoal && (
-                            <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <Target className="w-3 h-3" /> {associatedGoal.title}
-                            </span>
-                          )}
-                          {task.hasReminder && (
-                            <span className="bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <Bell className="w-3 h-3" /> {task.reminderTime}
-                            </span>
-                          )}
-                          {dailyStreak > 0 && (
-                            <span className="bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <Flame className="w-3 h-3 fill-orange-500" /> {dailyStreak} dni z rzędu
-                            </span>
-                          )}
-                        </div>
-                        <span className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
-                          {!task.repeat || task.repeat === 'once' ? 'Jednorazowe' : task.repeat === 'daily' ? 'Codziennie' : task.repeat === 'interval' ? 'Co ' + task.intervalDays + ' dni' : 'Niestandardowe dni'} 
-                          {task.duration > 0 ? ' • ' + task.duration + ' min' : ''} • +{task.pkt || 20} PKT
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 ml-2" onClick={e => e.stopPropagation()}>
-                      {task.duration > 0 && !isDone && (
-                        <button onClick={(e) => toggleTimer(task.id, e)} className={'px-3 py-1.5 rounded-xl ' + currentFontConfig.smallClass + ' font-mono font-semibold flex items-center gap-1.5 transition-colors border shadow-sm ' + (task.isRunning ? 'bg-amber-500 text-slate-950 border-amber-600 animate-pulse' : tStyle.modalBtnBg)}>
-                          {task.isRunning ? <Pause className="w-3.5 h-3.5 fill-slate-950" /> : <Play className="w-3.5 h-3.5" />}
-                          <span>{formatTime(task.timeLeft)}</span>
-                        </button>
-                      )}
-                      <button onClick={() => setEditingTask({ ...task })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
-                      <button onClick={() => setConfirmDeleteModal({ type: 'task', id: task.id, name: task.title })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-red-500/10 hover:text-red-500 transition-colors ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const archivedTasks = tasks.filter(t => {
     if (t.repeat && t.repeat !== 'once') {
       return t.completedDates && Object.values(t.completedDates).some(v => v);
@@ -1650,7 +1601,7 @@ export default function App() {
 
   return (
     <div className={'min-h-screen pb-32 px-4 md:px-8 pt-6 md:pt-10 max-w-md md:max-w-3xl lg:max-w-5xl mx-auto select-none transition-colors duration-300 ' + currentFontConfig.sizeClass}>
-       
+        
       {activeTab === 'today' && (
         <>
           <header className="flex justify-between items-center mb-6 md:mb-8">
@@ -1682,25 +1633,128 @@ export default function App() {
             </div>
           </div>
 
-          {isLayoutEditing && (
-            <div className="bg-amber-500/20 border border-amber-500/50 p-4 rounded-3xl mb-6 flex justify-between items-center shadow-lg animate-fadeIn">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🛠️</span>
-                <div>
-                  <h4 className={'font-bold text-amber-700 dark:text-amber-400 ' + currentFontConfig.smallClass}>Tryb edycji układu aktywny</h4>
-                  <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Użyj strzałek przy nagłówkach, aby zmienić kolejność.</p>
+          <div className="space-y-6">
+            
+            {/* WSPÓLNA SEKCJA ZADAŃ NA DZISIAJ */}
+            <div className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all bg-slate-500/10 dark:bg-slate-500/10 border-slate-500/20'}>
+              <div className="flex justify-between items-center select-none pb-2">
+                <div className="flex items-center gap-2 flex-1">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  {/* ZMIANA 1: Zwiększenie widoczności napisu "Zadania na dzisiaj" w jasnym motywie */}
+                  <h2 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider ' + tStyle.titleText}>
+                    Zadania na dzisiaj
+                  </h2>
+                  <span className={currentFontConfig.smallClass + ' ml-1 ' + tStyle.subText}>
+                    ({completedTodayCount}/{allTodayTasks.length})
+                  </span>
                 </div>
               </div>
-              <button onClick={() => setIsLayoutEditing(false)} className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl font-bold transition-transform active:scale-95 shadow-md text-xs">Gotowe</button>
-            </div>
-          )}
 
-          <div className="space-y-6">
-            {activeBlockOrder.map((catId, index) => {
-              const cat = categories.find(c => c.id === catId);
-              if (!cat) return null;
-              return renderCategoryBlock(cat, index);
-            })}
+              <div className="mt-4 pt-3 border-t border-slate-500/25 space-y-3 animate-fadeIn">
+                {allTodayTasks.length === 0 ? (
+                    <p className={'text-center py-3 opacity-60 ' + currentFontConfig.smallClass + ' ' + tStyle.subText}>Brak zadań na dziś.</p>
+                ) : (
+                   <div className="space-y-3">
+                     {allTodayTasks.map((task) => {
+                       const isDone = isTaskDoneForDate(task, todayStr);
+                       const dailyStreak = task.repeat === 'daily' ? getTaskStreak(task.id) : 0;
+                       const associatedGoal = goals.find(g => g.id === task.goalId);
+                       
+                       const cTheme = getCategoryTheme(task.category);
+
+                       return (
+                         <div key={task.id} onClick={() => {
+                             setConfirmCompleteModal({ type: 'task', id: task.id, name: task.title, isDone, goalId: task.goalId, targetDate: todayStr });
+                             setCompleteTaskValue('');
+                         }} className={'flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer shadow-sm ' + (isDone ? `${cTheme.itemDoneBg} ${cTheme.itemBorder} opacity-75` : `${cTheme.itemBg} ${cTheme.itemBorder}`)}>
+                            <div className="flex items-center gap-3">
+                              {isDone ? <CheckCircle2 className={`w-6 h-6 shrink-0 ${cTheme.iconText}`} /> : <Circle className="w-6 h-6 text-slate-400 shrink-0" />}
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <span className={'font-medium block ' + tStyle.titleText + (isDone ? ' line-through opacity-75' : '')}>{task.title}</span>
+                                  
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cTheme.bg} ${cTheme.text} ${cTheme.border}`}>
+                                    {task.category}
+                                  </span>
+
+                                  {associatedGoal && (
+                                    <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                      <Target className="w-3 h-3" /> {associatedGoal.title}
+                                    </span>
+                                  )}
+                                  {task.hasReminder && (
+                                    <span className="bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                      <Bell className="w-3 h-3" /> {task.reminderTime}
+                                    </span>
+                                  )}
+                                  {dailyStreak > 0 && (
+                                    <span className="bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                      <Flame className="w-3 h-3 fill-orange-500" /> {dailyStreak} dni z rzędu
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
+                                  {!task.repeat || task.repeat === 'once' ? 'Jednorazowe' : task.repeat === 'daily' ? 'Codziennie' : task.repeat === 'interval' ? 'Co ' + task.intervalDays + ' dni' : 'Niestandardowe dni'} 
+                                  {task.duration > 0 ? ' • ' + task.duration + ' min' : ''} • +{task.pkt || 20} PKT
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* ZMIANA 3: 3 kropki (Menu dropdown) dla Edycji i Kosza */}
+                            <div className="flex items-center gap-1.5 ml-2" onClick={e => e.stopPropagation()}>
+                              {task.duration > 0 && !isDone && (
+                                <button onClick={(e) => toggleTimer(task.id, e)} className={'px-3 py-1.5 rounded-xl ' + currentFontConfig.smallClass + ' font-mono font-semibold flex items-center gap-1.5 transition-colors border shadow-sm ' + (task.isRunning ? 'bg-amber-500 text-slate-950 border-amber-600 animate-pulse' : tStyle.modalBtnBg)}>
+                                  {task.isRunning ? <Pause className="w-3.5 h-3.5 fill-slate-950" /> : <Play className="w-3.5 h-3.5" />}
+                                  <span>{formatTime(task.timeLeft)}</span>
+                                </button>
+                              )}
+                              
+                              <div className="relative">
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenMenuTaskId(openMenuTaskId === task.id ? null : task.id);
+                                  }}
+                                  className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </button>
+
+                                {openMenuTaskId === task.id && (
+                                  <div className={"absolute right-0 mt-2 w-36 rounded-xl shadow-lg border z-50 flex flex-col overflow-hidden " + tStyle.cardBg}>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenMenuTaskId(null);
+                                        setEditingTask({ ...task });
+                                      }}
+                                      className={"flex items-center gap-2 px-3 py-2.5 hover:bg-slate-500/10 transition-colors " + tStyle.subText + " hover:text-amber-500 text-sm font-medium"}
+                                    >
+                                      <Edit3 className="w-4 h-4" /> Edytuj
+                                    </button>
+                                    <div className="h-px bg-slate-500/20 w-full" />
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenMenuTaskId(null);
+                                        setConfirmDeleteModal({ type: 'task', id: task.id, name: task.title });
+                                      }}
+                                      className={"flex items-center gap-2 px-3 py-2.5 hover:bg-red-500/10 transition-colors " + tStyle.subText + " hover:text-red-500 text-sm font-medium"}
+                                    >
+                                      <Trash2 className="w-4 h-4" /> Usuń
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                         </div>
+                       );
+                     })}
+                   </div>
+                )}
+              </div>
+            </div>
 
             {workouts.filter(w => w.date === todayStr).length > 0 && (
               <div className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all bg-slate-500/10 dark:bg-slate-500/10 border-slate-500/20'}>
@@ -1733,7 +1787,7 @@ export default function App() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 ml-2">
-                            <button onClick={() => setEditingWorkout({ ...w, goalId: w.goalId || '' })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
+                            <button onClick={() => { setFormErrors({}); setEditingWorkout({ ...w, goalId: w.goalId || '' }); }} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
                             <button onClick={() => setConfirmDeleteModal({ type: 'workout', id: w.id, name: workoutName })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-red-500/10 hover:text-red-500 transition-colors ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </div>
@@ -1744,7 +1798,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ZADANIA ZAPLANOWANE DO 2 DNI */}
             {upcomingTasks.length > 0 && (
               <div className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all bg-violet-500/10 dark:bg-violet-500/10 border-violet-500/20 mt-6'}>
                 <div className="flex justify-between items-center select-none pb-2 cursor-pointer" onClick={() => setUpcomingTasksCollapsed(!upcomingTasksCollapsed)}>
@@ -1794,7 +1847,7 @@ export default function App() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5 ml-2" onClick={e => e.stopPropagation()}>
-                              <button onClick={() => setEditingTask({ ...task })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
+                              <button onClick={() => { setFormErrors({}); setEditingTask({ ...task }); }} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
                             </div>
                           </div>
                         );
@@ -1813,14 +1866,14 @@ export default function App() {
                 {categories.map((cat) => (
                   <button 
                     key={cat.id} 
-                    onClick={() => { setNewTaskCategory(cat.id); setShowAddTaskModal(true); setIsFabOpen(false); }} 
+                    onClick={() => { setNewTaskCategory(cat.id); setFormErrors({}); setShowAddTaskModal(true); setIsFabOpen(false); }} 
                     className={'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-5 py-3 rounded-2xl shadow-xl font-bold border border-slate-300 dark:border-slate-600 ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}
                   >
                     <Plus className="w-4 h-4 text-emerald-500" /> Zadanie: {cat.label}
                   </button>
                 ))}
                 <button 
-                  onClick={() => { setShowAddWorkoutModal(true); setIsFabOpen(false); }} 
+                  onClick={() => { setFormErrors({}); setShowAddWorkoutModal(true); setIsFabOpen(false); }} 
                   className={'bg-amber-500 text-slate-950 px-5 py-3 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95 mt-2'}
                 >
                   <Activity className="w-4 h-4" /> Zarejestruj aktywność
@@ -1865,9 +1918,9 @@ export default function App() {
                       const isCompleted = percent >= 100;
                       
                       let CatIcon = Target;
-                      if (goal.category === 'Zdrowie') CatIcon = Dumbbell;
-                      if (goal.category === 'Dom') CatIcon = Utensils;
-                      if (goal.category === 'Rozwój') CatIcon = Brain;
+                      if (goal.category === 'Zdrowie' || goal.category === 'Sport') CatIcon = Dumbbell;
+                      if (goal.category === 'Dom' || goal.category === 'Ogólne') CatIcon = Utensils;
+                      if (goal.category === 'Rozwój' || goal.category === 'Nauka' || goal.category === 'Książka') CatIcon = Brain;
 
                       return (
                         <div key={goal.id} className={'p-5 rounded-3xl border shadow-sm relative bg-amber-500/10 border-amber-500/25 ' + (isCompleted ? ' border-emerald-500/50 bg-emerald-500/10' : '')}>
@@ -1884,7 +1937,7 @@ export default function App() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
-                              <button onClick={() => setEditingGoal({ ...goal })} className={'hover:text-amber-500 p-1 ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
+                              <button onClick={() => { setFormErrors({}); setEditingGoal({ ...goal }); }} className={'hover:text-amber-500 p-1 ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
                               <button onClick={() => setConfirmDeleteModal({ type: 'goal', id: goal.id, name: goal.title })} className={'hover:text-red-500 p-1 ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
                             </div>
                           </div>
@@ -1949,7 +2002,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 ml-2">
-                          <button onClick={() => setEditingTask({ ...task })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
+                          <button onClick={() => { setFormErrors({}); setEditingTask({ ...task }); }} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
                           <button onClick={() => setConfirmDeleteModal({ type: 'task', id: task.id, name: task.title })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-red-500/10 hover:text-red-500 transition-colors ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </div>
@@ -2219,7 +2272,6 @@ export default function App() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] overflow-y-auto">
           <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
             
-            {/* Header Modala z przyciskiem powrotu/zamknięcia */}
             <div className="flex justify-between items-center mb-6 pb-2 border-b border-slate-500/20">
                <div className="flex items-center gap-2">
                  {goalWizardStep > 1 && (
@@ -2240,7 +2292,7 @@ export default function App() {
                 {Object.values(GOAL_CATEGORIES_CONFIG).map(cat => (
                   <button 
                     key={cat.id}
-                    onClick={() => setWizardData({...wizardData, categoryKey: cat.id})}
+                    onClick={() => { setWizardData({...wizardData, categoryKey: cat.id}); clearError('wizardCategory'); }}
                     className={`p-4 rounded-2xl border text-center transition-all ${wizardData.categoryKey === cat.id ? 'bg-amber-500/20 border-amber-500 text-amber-500 ring-2 ring-amber-500' : 'bg-slate-500/10 border-slate-500/30 hover:bg-slate-500/20'}`}
                   >
                     <span className="block text-3xl mb-2">{cat.label.split(' ')[0]}</span>
@@ -2253,7 +2305,6 @@ export default function App() {
             {/* KROK 2: SZCZEGÓŁY CELU */}
             {goalWizardStep === 2 && wizardData.categoryKey && (
               <div className="space-y-4 animate-fadeIn">
-                {/* Dynamiczny wybór typu z dostosowaną etykietą */}
                 {wizardData.categoryKey !== 'book' && (
                   <div>
                     <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
@@ -2263,10 +2314,10 @@ export default function App() {
                     </label>
                     <select 
                       value={wizardData.type} 
-                      onChange={(e) => setWizardData({...wizardData, type: e.target.value})} 
-                      className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg}
+                      onChange={(e) => { setWizardData({...wizardData, type: e.target.value}); clearError('wizardType'); }} 
+                      className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.wizardType ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`}
                     >
-                      <option value="">-- Wybierz --</option>
+                      <option value="">-- Wybierz (Wymagane) --</option>
                       {GOAL_CATEGORIES_CONFIG[wizardData.categoryKey].types.map(t => (
                         <option key={t.id} value={t.id}>{t.label}</option>
                       ))}
@@ -2274,7 +2325,6 @@ export default function App() {
                   </div>
                 )}
                 
-                {/* Dynamiczny tytuł */}
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
                     {wizardData.categoryKey === 'book' ? 'Tytuł książki (np. "Wiedźmin: Ostatnie Życzenie")' :
@@ -2283,10 +2333,15 @@ export default function App() {
                      wizardData.categoryKey === 'health' ? 'Nazwa wyzwania (np. "Więcej wody", "Detoks")' :
                      'Nazwa projektu / celu (np. "Nowa aplikacja")'}
                   </label>
-                  <input type="text" value={wizardData.title} onChange={(e) => setWizardData({...wizardData, title: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} placeholder="Wpisz nazwę..." />
+                  <input 
+                    type="text" 
+                    value={wizardData.title} 
+                    onChange={(e) => { setWizardData({...wizardData, title: e.target.value}); clearError('wizardTitle'); }} 
+                    className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.wizardTitle ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`} 
+                    placeholder="Wpisz nazwę... (Wymagane)" 
+                  />
                 </div>
 
-                {/* Dostosowany tekst dla przełącznika "Daily" */}
                 <div className="pt-2 border-t border-slate-500/20">
                   <label className="flex items-center gap-2 cursor-pointer mb-2">
                     <input type="checkbox" checked={wizardData.isDaily} onChange={(e) => setWizardData({...wizardData, isDaily: e.target.checked})} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
@@ -2298,16 +2353,22 @@ export default function App() {
                   </label>
                 </div>
 
-                {/* Dynamiczna wartość docelowa z jednostką */}
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                    {wizardData.categoryKey === 'book' ? 'Liczba stron do przeczytania (łącznie)' :
+                    {wizardData.categoryKey === 'book' ? 'Liczba stron / Rozdziałów' :
                      wizardData.type ? `Rozmiar wyzwania (w: ${getUnitForType(wizardData.type)})` : 'Rozmiar wyzwania (najpierw wybierz typ wyżej)'}
                   </label>
-                  <input type="number" step="any" min="0.1" value={wizardData.target} onChange={(e) => setWizardData({...wizardData, target: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} placeholder={wizardData.categoryKey === 'book' ? "np. 320" : "np. 50"} />
+                  <input 
+                    type="number" 
+                    step="any" 
+                    min="0.1" 
+                    value={wizardData.target} 
+                    onChange={(e) => { setWizardData({...wizardData, target: e.target.value}); clearError('wizardTarget'); }} 
+                    className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.wizardTarget ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`} 
+                    placeholder={wizardData.categoryKey === 'book' ? "np. 320 (Wymagane)" : "np. 50 (Wymagane)"} 
+                  />
                 </div>
                 
-                {/* Dynamiczny Deadline */}
                 {!wizardData.isDaily && (
                   <div>
                     <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
@@ -2355,7 +2416,12 @@ export default function App() {
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
                     Jak nazwiesz to konkretne zadanie w liście "Dzisiaj"?
                   </label>
-                  <input type="text" value={wizardData.taskTitle} onChange={(e) => setWizardData({...wizardData, taskTitle: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                  <input 
+                    type="text" 
+                    value={wizardData.taskTitle} 
+                    onChange={(e) => { setWizardData({...wizardData, taskTitle: e.target.value}); clearError('wizardTaskTitle'); }} 
+                    className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.wizardTaskTitle ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-emerald-500'} ${tStyle.inputBg}`} 
+                  />
                 </div>
 
                 <div>
@@ -2365,7 +2431,7 @@ export default function App() {
                      wizardData.categoryKey === 'study' ? `Wartość na jedną sesję nauki (w: ${getUnitForType(wizardData.type)})` :
                      `Wartość docelowa na jedno zadanie (w: ${getUnitForType(wizardData.type)})`}
                   </label>
-                  <input type="number" step="any" min="0" placeholder={wizardData.categoryKey === 'book' ? "np. 20" : "np. 15 (opcjonalnie)"} value={wizardData.taskAmount} onChange={(e) => setWizardData({...wizardData, taskAmount: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                  <input type="number" step="any" min="0" placeholder={wizardData.categoryKey === 'book' ? "np. 20 (opcjonalnie)" : "np. 15 (opcjonalnie)"} value={wizardData.taskAmount} onChange={(e) => setWizardData({...wizardData, taskAmount: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
                 </div>
 
                 <div>
@@ -2377,7 +2443,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Ukrywamy pole minut, jeśli jednostką dla tego celu jest już czas */}
                 {getUnitForType(wizardData.type) !== 'godz.' && getUnitForType(wizardData.type) !== 'min' && (
                   <div>
                     <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Czas trwania sesji (uruchamia stoper w minutach, opcjonalnie)</label>
@@ -2400,7 +2465,6 @@ export default function App() {
               </div>
             )}
 
-            {/* STOPKA MODALA Z PRZYCISKIEM DALEJ */}
             {(goalWizardStep === 1 || goalWizardStep === 2 || goalWizardStep === 4) && (
               <div className="mt-6 pt-4 border-t border-slate-500/20">
                  <button 
@@ -2415,7 +2479,6 @@ export default function App() {
           </div>
         </div>
       )}
-
 
       {showTrophiesModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[120] overflow-y-auto">
@@ -2614,21 +2677,14 @@ export default function App() {
             </div>
 
             <div>
-              <label className={currentFontConfig.smallClass + ' md:text-sm font-medium block mb-2 ' + tStyle.subText}>Kategorie (Obszary życia)</label>
+              <label className={currentFontConfig.smallClass + ' md:text-sm font-medium block mb-2 ' + tStyle.subText}>Kategorie (Zablokowane z Kreatorem)</label>
               <div className="space-y-2 mb-3">
                 {categories.map(cat => (
                   <div key={cat.id} className={'flex items-center justify-between p-3 rounded-2xl border ' + tStyle.cardBg}>
                     <span className={currentFontConfig.smallClass + ' px-3 py-1 rounded-full border font-bold ' + cat.color}>{cat.label}</span>
-                    {categories.length > 1 && (
-                      <button onClick={() => deleteCategory(cat.id)} className={'hover:text-red-500 p-2 rounded-xl hover:bg-red-500/10 transition-colors ' + tStyle.subText} title="Usuń kategorię"><Trash2 className="w-4 h-4" /></button>
-                    )}
                   </div>
                 ))}
               </div>
-              <form onSubmit={addCategory} className="flex gap-2">
-                <input type="text" placeholder="np. 🚀 Kariera" value={newCatLabel} onChange={(e) => setNewCatLabel(e.target.value)} className={'flex-1 rounded-xl px-4 py-2.5 ' + currentFontConfig.smallClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
-                <button type="submit" className={'bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2.5 rounded-xl font-bold ' + currentFontConfig.smallClass + ' transition-all'}>+ Dodaj</button>
-              </form>
             </div>
 
             <div>
@@ -2687,7 +2743,13 @@ export default function App() {
             <form onSubmit={addTask} className="space-y-4">
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Tytuł zadania</label>
-                <input type="text" placeholder="np. Nauka angielskiego" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                <input 
+                  type="text" 
+                  placeholder="np. Nauka angielskiego (Wymagane)" 
+                  value={newTaskTitle} 
+                  onChange={(e) => { setNewTaskTitle(e.target.value); clearError('newTaskTitle'); }} 
+                  className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.newTaskTitle ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-emerald-500'} ${tStyle.inputBg}`} 
+                />
               </div>
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Przypisz do celu (opcjonalnie)</label>
@@ -2779,7 +2841,12 @@ export default function App() {
             <form onSubmit={saveEditedTask} className="space-y-4">
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Tytuł zadania</label>
-                <input type="text" value={editingTask.title} onChange={(e) => setEditingTask({ ...editingTask, title: e.target.value })} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                <input 
+                  type="text" 
+                  value={editingTask.title} 
+                  onChange={(e) => { setEditingTask({ ...editingTask, title: e.target.value }); clearError('editingTaskTitle'); }} 
+                  className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.editingTaskTitle ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-emerald-500'} ${tStyle.inputBg}`} 
+                />
               </div>
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Kategoria (Obszar życia)</label>
@@ -2901,7 +2968,14 @@ export default function App() {
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
                   {newWorkoutType === 'run' || newWorkoutType === 'bike' || newWorkoutType === 'walk_km' ? 'Dystans (km)' : newWorkoutType === 'pushups' || newWorkoutType === 'pullups' || newWorkoutType === 'squats' || newWorkoutType === 'situps' ? 'Liczba powtórzeń' : newWorkoutType === 'steps' ? 'Liczba kroków' : newWorkoutType === 'gym' ? 'Czas (minuty)' : newWorkoutType === 'study' ? 'Czas (godziny)' : newWorkoutType === 'read_book' ? 'Liczba stron' : newWorkoutType === 'read_chapters' ? 'Liczba rozdziałów' : newWorkoutType === 'no_sweets' ? 'Liczba dni' : 'Wartość'}
                 </label>
-                <input type="number" step="any" placeholder={newWorkoutType === 'steps' ? 'np. 10000' : 'np. 1'} value={newWorkoutAmount} onChange={(e) => setNewWorkoutAmount(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
+                <input 
+                  type="number" 
+                  step="any" 
+                  placeholder={newWorkoutType === 'steps' ? 'np. 10000 (Wymagane)' : 'np. 1 (Wymagane)'} 
+                  value={newWorkoutAmount} 
+                  onChange={(e) => { setNewWorkoutAmount(e.target.value); clearError('newWorkoutAmount'); }} 
+                  className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.newWorkoutAmount ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`} 
+                />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowAddWorkoutModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
@@ -2954,7 +3028,13 @@ export default function App() {
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
                   {editingWorkout.type === 'run' || editingWorkout.type === 'bike' || editingWorkout.type === 'walk_km' ? 'Dystans (km)' : editingWorkout.type === 'pushups' || editingWorkout.type === 'pullups' || editingWorkout.type === 'squats' || editingWorkout.type === 'situps' ? 'Liczba powtórzeń' : editingWorkout.type === 'steps' ? 'Liczba kroków' : editingWorkout.type === 'gym' ? 'Czas (minuty)' : editingWorkout.type === 'study' ? 'Czas (godziny)' : editingWorkout.type === 'read_book' ? 'Liczba stron' : editingWorkout.type === 'read_chapters' ? 'Liczba rozdziałów' : editingWorkout.type === 'no_sweets' ? 'Liczba dni' : 'Wartość'}
                 </label>
-                <input type="number" step="any" value={editingWorkout.amount} onChange={(e) => setEditingWorkout({...editingWorkout, amount: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
+                <input 
+                  type="number" 
+                  step="any" 
+                  value={editingWorkout.amount} 
+                  onChange={(e) => { setEditingWorkout({...editingWorkout, amount: e.target.value}); clearError('editingWorkoutAmount'); }} 
+                  className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.editingWorkoutAmount ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`} 
+                />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setEditingWorkout(null)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
@@ -2972,9 +3052,13 @@ export default function App() {
             <form onSubmit={addActivity} className="space-y-4">
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Wybierz cel</label>
-                <select value={activityGoalId} onChange={(e) => setActivityGoalId(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg}>
-                  <option value="">-- Wybierz cel --</option>
-                  {goals.filter(g => g.category === 'umysl' || g.category === 'jedzenie').map(g => {
+                <select 
+                  value={activityGoalId} 
+                  onChange={(e) => { setActivityGoalId(e.target.value); clearError('activityGoalId'); }} 
+                  className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.activityGoalId ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-emerald-500'} ${tStyle.inputBg}`}
+                >
+                  <option value="">-- Wybierz cel (Wymagane) --</option>
+                  {goals.filter(g => g.category === 'Nauka' || g.category === 'Książka' || g.category === 'Zdrowie').map(g => {
                     const isProgressType = g.type === 'read_book' || g.type === 'read_chapters' || g.type === 'study' || g.type === 'no_sweets';
                     let currentVal = 0;
                     if (g.isDaily) {
@@ -2990,7 +3074,15 @@ export default function App() {
               </div>
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Wartość do dodania (strony / rozdziały / godziny / dni)</label>
-                <input type="number" step="any" min="0.1" placeholder="np. 20 lub 1.5" value={activityPages} onChange={(e) => setActivityPages(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                <input 
+                  type="number" 
+                  step="any" 
+                  min="0.1" 
+                  placeholder="np. 20 lub 1.5 (Wymagane)" 
+                  value={activityPages} 
+                  onChange={(e) => { setActivityPages(e.target.value); clearError('activityPages'); }} 
+                  className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.activityPages ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-emerald-500'} ${tStyle.inputBg}`} 
+                />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowAddActivityModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
@@ -3008,7 +3100,12 @@ export default function App() {
             <form onSubmit={saveEditedGoal} className="space-y-4">
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Tytuł / Nazwa celu</label>
-                <input type="text" value={editingGoal.title} onChange={(e) => setEditingGoal({ ...editingGoal, title: e.target.value })} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
+                <input 
+                  type="text" 
+                  value={editingGoal.title} 
+                  onChange={(e) => { setEditingGoal({ ...editingGoal, title: e.target.value }); clearError('editingGoalTitle'); }} 
+                  className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.editingGoalTitle ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`} 
+                />
               </div>
               
               <div className="pt-2 border-t border-slate-500/20">
@@ -3027,7 +3124,13 @@ export default function App() {
               
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Docelowa wartość {editingGoal.isDaily ? '(na dzień)' : ''}</label>
-                <input type="number" step="any" value={editingGoal.target} onChange={(e) => setEditingGoal({ ...editingGoal, target: parseFloat(e.target.value) || 0 })} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
+                <input 
+                  type="number" 
+                  step="any" 
+                  value={editingGoal.target} 
+                  onChange={(e) => { setEditingGoal({ ...editingGoal, target: parseFloat(e.target.value) || 0 }); clearError('editingGoalTarget'); }} 
+                  className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.editingGoalTarget ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`} 
+                />
               </div>
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + (editingGoal.isDaily ? 'opacity-50 ' : '') + tStyle.subText}>Termin realizacji</label>

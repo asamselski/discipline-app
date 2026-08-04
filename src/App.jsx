@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { QUOTES } from './data/quotes';
 import { 
   CheckCircle2, Circle, Plus, Trophy, Zap, 
-  Trash2, Calendar as CalendarIcon, Check, Play, Pause, Quote, X, User, Settings, ShieldCheck, Sun, Moon, Sparkles, Flame, MessageSquare, AlertTriangle, Edit3, Target, Activity, Dumbbell, Footprints, Utensils, Brain, ChevronDown, GripVertical, Bell, Laptop, BookOpen, Archive, RotateCcw,
+  Trash2, Calendar as CalendarIcon, Check, Play, Pause, Quote, X, User, Settings, ShieldCheck, Sun, Moon, Sparkles, Flame, MessageSquare, AlertTriangle, Edit3, Target, Activity, Dumbbell, Footprints, Utensils, Brain, ChevronDown, Bell, Laptop, BookOpen, Archive, RotateCcw,
   ChevronLeft, ChevronRight, PieChart, CheckSquare, Type, Clock,
   Award, Share2, Lock, MoreVertical
 } from 'lucide-react';
@@ -72,19 +72,16 @@ const TROPHIES = [
   { id: 'bronze_level5', title: 'Pierwsza krew', desc: 'Osiągnij 5 poziom', rank: 'bronze' },
   { id: 'bronze_tasks10', title: 'Rozgrzewka umysłu', desc: 'Wykonaj łącznie 10 zadań', rank: 'bronze' },
   { id: 'bronze_workouts10', title: 'Młody Wilk', desc: 'Zarejestruj 10 aktywności', rank: 'bronze' },
-  
   { id: 'silver_level10', title: 'Wędrowiec', desc: 'Osiągnij 10 poziom', rank: 'silver' },
   { id: 'silver_level20', title: 'Hart Ducha', desc: 'Osiągnij 20 poziom', rank: 'silver' },
   { id: 'silver_tasks50', title: 'Siła Nawyku', desc: 'Wykonaj łącznie 50 zadań', rank: 'silver' },
   { id: 'silver_tasks100', title: 'Niezłomny', desc: 'Wykonaj łącznie 100 zadań', rank: 'silver' },
   { id: 'silver_workouts100', title: 'Stalowe Mięśnie', desc: 'Zarejestruj 100 aktywności', rank: 'silver' },
-  
   { id: 'gold_level30', title: 'Elita', desc: 'Osiągnij 30 poziom', rank: 'gold' },
   { id: 'gold_level40', title: 'Nieśmiertelny', desc: 'Osiągnij 40 poziom', rank: 'gold' },
   { id: 'gold_workouts50', title: 'Maszyna', desc: 'Zarejestruj 50 aktywności', rank: 'gold' },
   { id: 'gold_tasks500', title: 'Cyborg', desc: 'Wykonaj łącznie 500 zadań', rank: 'gold' },
   { id: 'gold_workouts500', title: 'Herkules', desc: 'Zarejestruj 500 aktywności', rank: 'gold' },
-  
   { id: 'platinum_level50', title: 'Absolutny Szczyt', desc: 'Osiągnij maksymalny 50 poziom', rank: 'platinum' },
   { id: 'platinum_master', title: 'Mistrz Dyscypliny', desc: 'Zdobądź wszystkie pozostałe trofea', rank: 'platinum' }
 ];
@@ -92,7 +89,7 @@ const TROPHIES = [
 const GOAL_CATEGORIES_CONFIG = {
   health: { id: 'health', label: '🌿 Zdrowie', dbCat: 'Zdrowie',
     types: [
-      { id: 'no_sweets', label: 'Brak słodyczy (dni)' },
+      { id: 'no_sweets', label: 'Brak słodyczy (dni/godziny)' },
       { id: 'water', label: 'Picie wody (dni)' },
       { id: 'sleep', label: 'Sen min. 7h (dni)' }
     ]
@@ -109,7 +106,7 @@ const GOAL_CATEGORIES_CONFIG = {
       { id: 'situps', label: 'Brzuszki (powt.)' }
     ]
   },
-  book: { id: 'book', label: '📖 Książka', dbCat: 'Książka', types: [{ id: 'read_book', label: 'Liczba stron' }] },
+  book: { id: 'book', label: '📖 Książka', dbCat: 'Książka', types: [{ id: 'read_book', label: 'Liczba stron' }, { id: 'read_chapters', label: 'Liczba rozdziałów' }] },
   study: { id: 'study', label: '🧠 Nauka', dbCat: 'Nauka',
     types: [
       { id: 'study', label: 'Nauka ogólna (godziny)' },
@@ -138,7 +135,7 @@ const getTrophyColors = (rank, isEarned) => {
 
 const getLevelInfo = (pkt) => {
   let level = 1;
-  let pointsNeededForCurrentLevel = 100;
+  let pointsNeededForCurrentLevel = 60; // ZMIANA Z 100 na 60
   let accumulatedPoints = 0;
 
   while (level < MAX_LEVEL) {
@@ -199,6 +196,15 @@ export default function App() {
     return () => clearInterval(interval);
   }, [todayStr, resetTime]);
 
+  // --- DODAJ TEN BLOK KODU TUTAJ ---
+  // Globalne zapytanie o zgodę na powiadomienia przy pierwszym uruchomieniu
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+  // ---------------------------------
+
   const [activeTab, setActiveTab] = useState('today');
   const chartScrollRef = useRef(null);
     
@@ -226,7 +232,6 @@ export default function App() {
     return INITIAL_CATEGORIES;
   });
 
-  const [newCatLabel, setNewCatLabel] = useState('');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showTrophiesModal, setShowTrophiesModal] = useState(false);
@@ -268,10 +273,7 @@ export default function App() {
   const [tasks, setTasks] = useState(() => {
     const savedTasks = localStorage.getItem('discipline_tasks_unified');
     if (savedTasks) return JSON.parse(savedTasks);
-    return [
-      { id: 1, title: 'Trening fizyczny', category: 'Zdrowie', goalId: null, pkt: 35, difficulty: 'hard', repeat: 'daily', duration: 30, hasReminder: false, reminderTime: '08:00', createdAt: getAppDayString(), dueDate: getAppDayString(), isCompleted: false, completedDates: {} },
-      { id: 3, title: 'Nauka programowania', category: 'Nauka', goalId: null, pkt: 25, difficulty: 'medium', repeat: 'daily', duration: 45, hasReminder: false, reminderTime: '08:00', createdAt: getAppDayString(), dueDate: getAppDayString(), isCompleted: false, completedDates: {} }
-    ];
+    return [];
   });
 
   const [workouts, setWorkouts] = useState(() => {
@@ -283,9 +285,7 @@ export default function App() {
   const [goals, setGoals] = useState(() => {
     const savedGoals = localStorage.getItem('discipline_goals');
     if (savedGoals) return JSON.parse(savedGoals);
-    return [
-      { id: 302, title: 'Wiedźmin: Ostatnie Życzenie', category: 'Książka', type: 'read_book', target: 332, currentPage: 120, dueDate: getAppDayString(), comment: '', isDaily: false }
-    ];
+    return [];
   });
 
   const [notes, setNotes] = useState(() => {
@@ -323,6 +323,7 @@ export default function App() {
   const [wizardData, setWizardData] = useState({
     categoryKey: '',  
     type: '',         
+    targetUnit: 'days',
     title: '',
     target: '',
     dueDate: getAppDayString(),
@@ -332,15 +333,17 @@ export default function App() {
     taskTitle: '',
     taskAmount: '',
     taskDifficulty: 'medium',
-    taskDuration: ''
+    taskDuration: '',
+    bookTotalPages: '' 
   });
 
   const openGoalWizard = () => {
     setWizardData({
-      categoryKey: '', type: '', title: '', target: '', 
+      categoryKey: '', type: '', targetUnit: 'days', title: '', target: '', 
       dueDate: getAppDayString(), isDaily: false, 
       createTask: false, taskRepeat: 'daily', taskTitle: '',
-      taskAmount: '', taskDifficulty: 'medium', taskDuration: ''
+      taskAmount: '', taskDifficulty: 'medium', taskDuration: '',
+      bookTotalPages: ''
     });
     setFormErrors({}); 
     setGoalWizardStep(1);
@@ -360,6 +363,19 @@ export default function App() {
     return units[type] || 'jedn.';
   };
 
+  const getTypeIcon = (typeId) => {
+    if (typeId === 'no_sweets') return <ShieldCheck className="w-8 h-8 mb-2 mx-auto text-amber-500" />;
+    if (typeId === 'water') return <Zap className="w-8 h-8 mb-2 mx-auto text-sky-500" />;
+    if (typeId === 'sleep') return <Moon className="w-8 h-8 mb-2 mx-auto text-indigo-400" />;
+    if (typeId === 'walk_km' || typeId === 'run') return <Footprints className="w-8 h-8 mb-2 mx-auto text-emerald-500" />;
+    if (typeId === 'bike' || typeId === 'stretching' || typeId === 'gym') return <Activity className="w-8 h-8 mb-2 mx-auto text-orange-500" />;
+    if (typeId === 'pullups' || typeId === 'pushups' || typeId === 'squats' || typeId === 'situps') return <Dumbbell className="w-8 h-8 mb-2 mx-auto text-slate-400" />;
+    if (typeId === 'study' || typeId === 'language' || typeId === 'course') return <Brain className="w-8 h-8 mb-2 mx-auto text-purple-500" />;
+    if (typeId === 'deep_work' || typeId === 'project') return <Laptop className="w-8 h-8 mb-2 mx-auto text-slate-500" />;
+    if (typeId === 'read_book' || typeId === 'read_chapters') return <BookOpen className="w-8 h-8 mb-2 mx-auto text-sky-500" />;
+    return <Target className="w-8 h-8 mb-2 mx-auto text-emerald-500" />;
+  };
+
   const [activityGoalId, setActivityGoalId] = useState('');
   const [activityPages, setActivityPages] = useState('');
 
@@ -368,6 +384,7 @@ export default function App() {
   const [editingWorkout, setEditingWorkout] = useState(null);
 
   const [confirmDeleteModal, setConfirmDeleteModal] = useState(null);
+  const [deleteAssociatedTasks, setDeleteAssociatedTasks] = useState(false);
   const [confirmCompleteModal, setConfirmCompleteModal] = useState(null);
   const [completeTaskValue, setCompleteTaskValue] = useState('');
 
@@ -388,7 +405,6 @@ export default function App() {
   });
   const [levelUpModalData, setLevelUpModalData] = useState(null);
 
-  // Zamykanie menu po kliknięciu poza elementem
   useEffect(() => {
     const handleClickOutside = () => setOpenMenuTaskId(null);
     document.addEventListener('click', handleClickOutside);
@@ -425,11 +441,20 @@ export default function App() {
     }
   }, [theme]);
 
+  // Powiadomienia + przypomnienie o 21:00
   useEffect(() => {
     const reminderInterval = setInterval(() => {
       const now = new Date();
       const currentTimeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
         
+      if (currentTimeStr === '21:00') {
+        const notified = localStorage.getItem('discipline_daily_plan_notified');
+        if (notified !== todayStr && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification('Czas zaplanować jutro! 🗓️', { body: 'Przejrzyj swoje zadania i zaplanuj kolejny dzień, by utrzymać dyscyplinę.' });
+          localStorage.setItem('discipline_daily_plan_notified', todayStr);
+        }
+      }
+
       tasks.forEach(t => {
         if (t.hasReminder && t.reminderTime === currentTimeStr && taskAppliesToDate(t, todayStr)) {
           const isDone = isTaskDoneForDate(t, todayStr);
@@ -448,26 +473,32 @@ export default function App() {
   useEffect(() => localStorage.setItem('discipline_goals', JSON.stringify(goals)), [goals]);
   useEffect(() => localStorage.setItem('discipline_notes', JSON.stringify(notes)), [notes]);
 
+  // LOGIKA STOPERÓW ODPORNA NA ZABLOKOWANY EKRAN (oparta na Date.now())
   useEffect(() => {
     const interval = setInterval(() => {
+      const now = Date.now();
       setTasks(prev => {
         let updated = false;
         const newTasks = prev.map(t => {
           if (t.isRunning && t.timeLeft > 0) {
-            updated = true;
-            const newTime = t.timeLeft - 1;
-            const isFinished = newTime === 0;
-            const newCompletedDates = { ...(t.completedDates || {}) };
-            if (isFinished && t.repeat && t.repeat !== 'once') {
-              newCompletedDates[todayStr] = true;
+            const elapsedSeconds = Math.floor((now - (t.lastTick || now)) / 1000);
+            if (elapsedSeconds > 0) {
+              updated = true;
+              const newTime = Math.max(0, t.timeLeft - elapsedSeconds);
+              const isFinished = newTime === 0;
+              const newCompletedDates = { ...(t.completedDates || {}) };
+              if (isFinished && t.repeat && t.repeat !== 'once') {
+                newCompletedDates[todayStr] = true;
+              }
+              return {
+                ...t,
+                timeLeft: newTime,
+                lastTick: now, 
+                isCompleted: isFinished ? (t.repeat && t.repeat !== 'once' ? t.isCompleted : true) : t.isCompleted,
+                completedDates: newCompletedDates,
+                isRunning: isFinished ? false : t.isRunning
+              };
             }
-            return {
-              ...t,
-              timeLeft: newTime,
-              isCompleted: isFinished ? (t.repeat && t.repeat !== 'once' ? t.isCompleted : true) : t.isCompleted,
-              completedDates: newCompletedDates,
-              isRunning: isFinished ? false : t.isRunning
-            };
           }
           return t;
         });
@@ -493,27 +524,6 @@ export default function App() {
   const getCategoryStyle = (catName) => {
     const found = categories.find(c => c.id === catName);
     return found ? found.color : 'bg-slate-500/20 text-slate-600 dark:text-slate-400 font-bold border-slate-500/50';
-  };
-
-  const addCategory = (e) => {
-    e.preventDefault();
-    if (!newCatLabel.trim()) return;
-    const catId = newCatLabel.trim().replace(/\s+/g, '_');
-    if (categories.some(c => c.id === catId)) return;
-    const colors = [
-      'bg-purple-500/20 text-purple-600 dark:text-purple-400 font-bold border-purple-500/50',
-      'bg-pink-500/20 text-pink-600 dark:text-pink-400 font-bold border-pink-500/50',
-      'bg-orange-500/20 text-orange-600 dark:text-orange-400 font-bold border-orange-500/50',
-      'bg-teal-500/20 text-teal-600 dark:text-teal-400 font-bold border-teal-500/50',
-      'bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold border-rose-500/50'
-    ];
-    setCategories([...categories, { id: catId, label: newCatLabel.trim(), color: colors[Math.floor(Math.random() * colors.length)] }]);
-    setNewCatLabel('');
-  };
-
-  const deleteCategory = (catId) => {
-    if (categories.length <= 1) return;
-    setCategories(categories.filter(c => c.id !== catId));
   };
 
   const getTaskStreak = (taskId) => {
@@ -571,7 +581,7 @@ export default function App() {
     e.stopPropagation();
     setTasks(prev => prev.map(t => {
       if (t.id === id) {
-        return { ...t, isRunning: !t.isRunning };
+        return { ...t, isRunning: !t.isRunning, lastTick: !t.isRunning ? Date.now() : t.lastTick };
       }
       return t;
     }));
@@ -594,9 +604,15 @@ export default function App() {
       }
       setWorkouts(workouts.filter(w => w.id !== id));
     }
-    else if (type === 'goal') setGoals(goals.filter(g => g.id !== id));
+    else if (type === 'goal') {
+      setGoals(goals.filter(g => g.id !== id));
+      if (deleteAssociatedTasks) {
+         setTasks(tasks.filter(t => t.goalId !== id)); 
+      }
+    }
 
     setConfirmDeleteModal(null);
+    setDeleteAssociatedTasks(false);
   };
 
   const executeComplete = () => {
@@ -607,8 +623,11 @@ export default function App() {
     if (type === 'task') {
       toggleTaskStatus(id, dateToUse);
 
-      if (!isDone && goalId && completeTaskValue) {
-         const val = parseFloat(completeTaskValue);
+      // Ustawiamy '1' jako domyślną wartość, jeśli pole jest puste
+      const finalTaskValue = (goalId && completeTaskValue === '') ? '1' : completeTaskValue;
+
+      if (!isDone && goalId && finalTaskValue) {
+         const val = parseFloat(finalTaskValue);
          if (!isNaN(val) && val > 0) {
              const targetGoal = goals.find(g => g.id === goalId);
              if (targetGoal) {
@@ -712,7 +731,8 @@ export default function App() {
       isCompleted: false,
       completedDates: {},
       timeLeft: durationMin * 60,
-      isRunning: false
+      isRunning: false,
+      lastTick: null
     };
 
     setTasks([...tasks, newTask]);
@@ -832,20 +852,22 @@ export default function App() {
 
   const handleWizardNext = () => {
     if (goalWizardStep === 1 && wizardData.categoryKey) {
-      if (wizardData.categoryKey === 'book') {
-         setWizardData({...wizardData, type: 'read_book'});
-      }
-      setGoalWizardStep(2);
+       setGoalWizardStep(2); 
     } 
-    else if (goalWizardStep === 2) {
+    else if (goalWizardStep === 3) {
       let errs = {};
       if (!wizardData.title.trim()) errs.wizardTitle = true;
       if (!wizardData.target || parseFloat(wizardData.target) <= 0) errs.wizardTarget = true;
-      if (!wizardData.type && wizardData.categoryKey !== 'book') errs.wizardType = true;
+      if (!wizardData.type) errs.wizardType = true;
 
       if (Object.keys(errs).length > 0) {
         setFormErrors(prev => ({...prev, ...errs}));
         return;
+      }
+      
+      if (wizardData.type === 'no_sweets' && wizardData.targetUnit === 'hours') {
+         finalizeWizard(true);
+         return;
       }
       
       let generatedTaskTitle = `Praca nad: ${wizardData.title.trim()}`;
@@ -853,9 +875,9 @@ export default function App() {
       if (wizardData.categoryKey === 'sport') generatedTaskTitle = `Trening: ${wizardData.title.trim()}`;
       
       setWizardData({...wizardData, taskTitle: generatedTaskTitle});
-      setGoalWizardStep(3); 
+      setGoalWizardStep(4); 
     }
-    else if (goalWizardStep === 4) {
+    else if (goalWizardStep === 5) {
       if (wizardData.createTask && !wizardData.taskTitle.trim()) {
          setFormErrors(prev => ({ ...prev, wizardTaskTitle: true }));
          return;
@@ -873,18 +895,45 @@ export default function App() {
       title: wizardData.title.trim(),
       category: catConfig.dbCat,
       type: wizardData.type,
+      targetUnit: wizardData.targetUnit,
       target: targetVal,
       currentPage: 0,
       dueDate: wizardData.isDaily ? null : wizardData.dueDate,
       isDaily: wizardData.isDaily,
-      comment: ''
+      comment: '',
+      totalPages: wizardData.categoryKey === 'book' && wizardData.type === 'read_chapters' ? (parseInt(wizardData.bookTotalPages) || null) : null
     };
     
     setGoals(prev => [...prev, newGoal]);
 
     const shouldCreateTask = forceCreateTask !== null ? forceCreateTask : wizardData.createTask;
 
-    if (shouldCreateTask && wizardData.taskTitle) {
+    if (wizardData.type === 'no_sweets' && wizardData.targetUnit === 'hours') {
+       const durationMin = targetVal * 60; 
+       const newTask = {
+         id: Date.now() + 1,
+         title: `Wyzwanie: ${wizardData.title.trim()} (${targetVal}h)`,
+         category: catConfig.dbCat,
+         goalId: newGoal.id,
+         pkt: Math.min(50, Math.max(20, targetVal * 2)), 
+         difficulty: 'hard',
+         repeat: 'once',
+         intervalDays: 1,
+         customDates: [],
+         dueDate: todayStr,
+         duration: durationMin,
+         hasReminder: false,
+         reminderTime: '08:00',
+         createdAt: todayStr,
+         isCompleted: false,
+         completedDates: {},
+         timeLeft: durationMin * 60, 
+         isRunning: false, 
+         lastTick: null
+       };
+       setTasks(prev => [...prev, newTask]);
+    } 
+    else if (shouldCreateTask && wizardData.taskTitle) {
        let finalTaskTitle = wizardData.taskTitle.trim();
        if (wizardData.taskAmount) {
           finalTaskTitle += ` (${wizardData.taskAmount} ${getUnitForType(wizardData.type)})`;
@@ -912,7 +961,8 @@ export default function App() {
          isCompleted: false,
          completedDates: {},
          timeLeft: durationMin * 60,
-         isRunning: false
+         isRunning: false,
+         lastTick: null
        };
        setTasks(prev => [...prev, newTask]);
     }
@@ -920,7 +970,6 @@ export default function App() {
     setGoalWizardStep(0); 
     setShowAddGoalModal(false); 
   };
-
 
   const addActivity = (e) => {
     e.preventDefault();
@@ -999,8 +1048,12 @@ export default function App() {
   };
 
   const formatTime = (seconds) => {
-    const m = Math.floor(seconds / 60);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
+    if (h > 0) {
+        return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    }
     return m + ':' + (s < 10 ? '0' : '') + s;
   };
 
@@ -1168,19 +1221,16 @@ export default function App() {
     checkAndAward('bronze_level5', currentLevel >= 5);
     checkAndAward('bronze_tasks10', totalTaskCompletions >= 10);
     checkAndAward('bronze_workouts10', totalWorkoutsCount >= 10);
-    
     checkAndAward('silver_level10', currentLevel >= 10);
     checkAndAward('silver_level20', currentLevel >= 20);
     checkAndAward('silver_tasks50', totalTaskCompletions >= 50);
     checkAndAward('silver_tasks100', totalTaskCompletions >= 100);
     checkAndAward('silver_workouts100', totalWorkoutsCount >= 100);
-    
     checkAndAward('gold_level30', currentLevel >= 30);
     checkAndAward('gold_level40', currentLevel >= 40);
     checkAndAward('gold_workouts50', totalWorkoutsCount >= 50);
     checkAndAward('gold_tasks500', totalTaskCompletions >= 500);
     checkAndAward('gold_workouts500', totalWorkoutsCount >= 500);
-
     checkAndAward('platinum_level50', currentLevel >= 50);
 
     const earnedCount = Object.keys(updatedTrophies).filter(k => k !== 'platinum_master').length;
@@ -1255,8 +1305,6 @@ export default function App() {
 
   const upcomingTasks = tasks.filter(t => {
     if (t.repeat === 'daily') return false; 
-    
-    // ZMIANA 2: Nie pokazujemy zadań, które są już widoczne na liście "Dzisiaj"
     if (allTodayTasksRaw.some(todayTask => todayTask.id === t.id)) return false;
     
     const appliesTomorrow = taskAppliesToDate(t, tomorrowStr) && !isTaskDoneForDate(t, tomorrowStr);
@@ -1634,13 +1682,10 @@ export default function App() {
           </div>
 
           <div className="space-y-6">
-            
-            {/* WSPÓLNA SEKCJA ZADAŃ NA DZISIAJ */}
             <div className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all bg-slate-500/10 dark:bg-slate-500/10 border-slate-500/20'}>
               <div className="flex justify-between items-center select-none pb-2">
                 <div className="flex items-center gap-2 flex-1">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  {/* ZMIANA 1: Zwiększenie widoczności napisu "Zadania na dzisiaj" w jasnym motywie */}
                   <h2 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider ' + tStyle.titleText}>
                     Zadania na dzisiaj
                   </h2>
@@ -1662,92 +1707,98 @@ export default function App() {
                        
                        const cTheme = getCategoryTheme(task.category);
 
-                       return (
+                     return (
                          <div key={task.id} onClick={() => {
                              setConfirmCompleteModal({ type: 'task', id: task.id, name: task.title, isDone, goalId: task.goalId, targetDate: todayStr });
                              setCompleteTaskValue('');
-                         }} className={'flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer shadow-sm ' + (isDone ? `${cTheme.itemDoneBg} ${cTheme.itemBorder} opacity-75` : `${cTheme.itemBg} ${cTheme.itemBorder}`)}>
-                            <div className="flex items-center gap-3">
-                              {isDone ? <CheckCircle2 className={`w-6 h-6 shrink-0 ${cTheme.iconText}`} /> : <Circle className="w-6 h-6 text-slate-400 shrink-0" />}
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap mb-1">
-                                  <span className={'font-medium block ' + tStyle.titleText + (isDone ? ' line-through opacity-75' : '')}>{task.title}</span>
-                                  
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cTheme.bg} ${cTheme.text} ${cTheme.border}`}>
-                                    {task.category}
-                                  </span>
+                         }} className={'flex flex-col gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer shadow-sm ' + (isDone ? `${cTheme.itemDoneBg} ${cTheme.itemBorder} opacity-75` : `${cTheme.itemBg} ${cTheme.itemBorder}`)}>
+                            
+                            {/* GŁÓWNY WIERSZ: Checkbox + Teksty + Menu */}
+                            <div className="flex items-start justify-between w-full">
+                               <div className="flex items-start gap-3 flex-1 min-w-0">
+                                 <div className="mt-0.5 shrink-0">
+                                   {isDone ? <CheckCircle2 className={`w-6 h-6 ${cTheme.iconText}`} /> : <Circle className="w-6 h-6 text-slate-400" />}
+                                 </div>
+                                 <div className="flex-1 min-w-0">
+                                   <div className="flex items-center gap-2 flex-wrap mb-1">
+                                     <span className={'font-medium block ' + tStyle.titleText + (isDone ? ' line-through opacity-75' : '')}>{task.title}</span>
+                                     
+                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cTheme.bg} ${cTheme.text} ${cTheme.border}`}>
+                                       {task.category}
+                                     </span>
 
-                                  {associatedGoal && (
-                                    <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                      <Target className="w-3 h-3" /> {associatedGoal.title}
-                                    </span>
-                                  )}
-                                  {task.hasReminder && (
-                                    <span className="bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                      <Bell className="w-3 h-3" /> {task.reminderTime}
-                                    </span>
-                                  )}
-                                  {dailyStreak > 0 && (
-                                    <span className="bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                      <Flame className="w-3 h-3 fill-orange-500" /> {dailyStreak} dni z rzędu
-                                    </span>
-                                  )}
-                                </div>
-                                <span className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
-                                  {!task.repeat || task.repeat === 'once' ? 'Jednorazowe' : task.repeat === 'daily' ? 'Codziennie' : task.repeat === 'interval' ? 'Co ' + task.intervalDays + ' dni' : 'Niestandardowe dni'} 
-                                  {task.duration > 0 ? ' • ' + task.duration + ' min' : ''} • +{task.pkt || 20} PKT
-                                </span>
-                              </div>
+                                     {associatedGoal && (
+                                       <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                         <Target className="w-3 h-3" /> {associatedGoal.title}
+                                      </span>
+                                     )}
+                                     {task.hasReminder && (
+                                       <span className="bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                         <Bell className="w-3 h-3" /> {task.reminderTime}
+                                       </span>
+                                     )}
+                                     {dailyStreak > 0 && (
+                                       <span className="bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                         <Flame className="w-3 h-3 fill-orange-500" /> {dailyStreak} dni z rzędu
+                                       </span>
+                                     )}
+                                   </div>
+                                   <span className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
+                                     {!task.repeat || task.repeat === 'once' ? 'Jednorazowe' : task.repeat === 'daily' ? 'Codziennie' : task.repeat === 'interval' ? 'Co ' + task.intervalDays + ' dni' : 'Niestandardowe dni'} 
+                                     {task.duration > 0 ? ' • ' + task.duration + ' min' : ''} • +{task.pkt || 20} PKT
+                                   </span>
+                                 </div>
+                               </div>
+
+                               <div className="relative shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                                 <button 
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     setOpenMenuTaskId(openMenuTaskId === task.id ? null : task.id);
+                                   }}
+                                   className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}
+                                 >
+                                   <MoreVertical className="w-4 h-4" />
+                                 </button>
+
+                                 {openMenuTaskId === task.id && (
+                                   <div className={"absolute right-0 mt-2 w-36 rounded-xl shadow-lg border z-50 flex flex-col overflow-hidden " + tStyle.cardBg}>
+                                     <button 
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setOpenMenuTaskId(null);
+                                         setEditingTask({ ...task });
+                                       }}
+                                       className={"flex items-center gap-2 px-3 py-2.5 hover:bg-slate-500/10 transition-colors " + tStyle.subText + " hover:text-amber-500 text-sm font-medium"}
+                                     >
+                                       <Edit3 className="w-4 h-4" /> Edytuj
+                                     </button>
+                                     <div className="h-px bg-slate-500/20 w-full" />
+                                     <button 
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setOpenMenuTaskId(null);
+                                         setConfirmDeleteModal({ type: 'task', id: task.id, name: task.title });
+                                         setDeleteAssociatedTasks(false);
+                                       }}
+                                       className={"flex items-center gap-2 px-3 py-2.5 hover:bg-red-500/10 transition-colors " + tStyle.subText + " hover:text-red-500 text-sm font-medium"}
+                                     >
+                                       <Trash2 className="w-4 h-4" /> Usuń
+                                     </button>
+                                   </div>
+                                 )}
+                               </div>
                             </div>
 
-                            {/* ZMIANA 3: 3 kropki (Menu dropdown) dla Edycji i Kosza */}
-                            <div className="flex items-center gap-1.5 ml-2" onClick={e => e.stopPropagation()}>
-                              {task.duration > 0 && !isDone && (
-                                <button onClick={(e) => toggleTimer(task.id, e)} className={'px-3 py-1.5 rounded-xl ' + currentFontConfig.smallClass + ' font-mono font-semibold flex items-center gap-1.5 transition-colors border shadow-sm ' + (task.isRunning ? 'bg-amber-500 text-slate-950 border-amber-600 animate-pulse' : tStyle.modalBtnBg)}>
-                                  {task.isRunning ? <Pause className="w-3.5 h-3.5 fill-slate-950" /> : <Play className="w-3.5 h-3.5" />}
-                                  <span>{formatTime(task.timeLeft)}</span>
-                                </button>
-                              )}
-                              
-                              <div className="relative">
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenMenuTaskId(openMenuTaskId === task.id ? null : task.id);
-                                  }}
-                                  className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}
-                                >
-                                  <MoreVertical className="w-4 h-4" />
-                                </button>
-
-                                {openMenuTaskId === task.id && (
-                                  <div className={"absolute right-0 mt-2 w-36 rounded-xl shadow-lg border z-50 flex flex-col overflow-hidden " + tStyle.cardBg}>
-                                    <button 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuTaskId(null);
-                                        setEditingTask({ ...task });
-                                      }}
-                                      className={"flex items-center gap-2 px-3 py-2.5 hover:bg-slate-500/10 transition-colors " + tStyle.subText + " hover:text-amber-500 text-sm font-medium"}
-                                    >
-                                      <Edit3 className="w-4 h-4" /> Edytuj
-                                    </button>
-                                    <div className="h-px bg-slate-500/20 w-full" />
-                                    <button 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuTaskId(null);
-                                        setConfirmDeleteModal({ type: 'task', id: task.id, name: task.title });
-                                      }}
-                                      className={"flex items-center gap-2 px-3 py-2.5 hover:bg-red-500/10 transition-colors " + tStyle.subText + " hover:text-red-500 text-sm font-medium"}
-                                    >
-                                      <Trash2 className="w-4 h-4" /> Usuń
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
+                            {/* TIMER - DODATKOWY WIERSZ POD SPODEM */}
+                            {task.duration > 0 && !isDone && (
+                               <div className="pl-9 pr-1 w-full" onClick={e => e.stopPropagation()}>
+                                 <button onClick={(e) => toggleTimer(task.id, e)} className={'w-full px-4 py-2.5 rounded-xl text-base md:text-lg font-mono font-bold flex items-center justify-center gap-2 transition-colors border shadow-sm ' + (task.isRunning ? 'bg-amber-500 text-slate-950 border-amber-600 animate-pulse' : tStyle.modalBtnBg)}>
+                                   {task.isRunning ? <Pause className="w-5 h-5 fill-slate-950" /> : <Play className="w-5 h-5" />}
+                                   <span>{formatTime(task.timeLeft)}</span>
+                                 </button>
+                               </div>
+                            )}
                          </div>
                        );
                      })}
@@ -1788,7 +1839,7 @@ export default function App() {
                           </div>
                           <div className="flex items-center gap-1.5 ml-2">
                             <button onClick={() => { setFormErrors({}); setEditingWorkout({ ...w, goalId: w.goalId || '' }); }} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => setConfirmDeleteModal({ type: 'workout', id: w.id, name: workoutName })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-red-500/10 hover:text-red-500 transition-colors ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
+                            <button onClick={() => { setConfirmDeleteModal({ type: 'workout', id: w.id, name: workoutName }); setDeleteAssociatedTasks(false); }} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-red-500/10 hover:text-red-500 transition-colors ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </div>
                       );
@@ -1938,7 +1989,7 @@ export default function App() {
                             </div>
                             <div className="flex items-center gap-1">
                               <button onClick={() => { setFormErrors({}); setEditingGoal({ ...goal }); }} className={'hover:text-amber-500 p-1 ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
-                              <button onClick={() => setConfirmDeleteModal({ type: 'goal', id: goal.id, name: goal.title })} className={'hover:text-red-500 p-1 ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
+                              <button onClick={() => { setConfirmDeleteModal({ type: 'goal', id: goal.id, name: goal.title }); setDeleteAssociatedTasks(false); }} className={'hover:text-red-500 p-1 ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
                             </div>
                           </div>
                           {goal.comment && <div className={'mb-2 p-2.5 rounded-xl bg-slate-500/10 italic ' + currentFontConfig.smallClass + ' ' + tStyle.subText}>💬 "{goal.comment}"</div>}
@@ -2003,7 +2054,7 @@ export default function App() {
                         </div>
                         <div className="flex items-center gap-1.5 ml-2">
                           <button onClick={() => { setFormErrors({}); setEditingTask({ ...task }); }} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
-                          <button onClick={() => setConfirmDeleteModal({ type: 'task', id: task.id, name: task.title })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-red-500/10 hover:text-red-500 transition-colors ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => { setConfirmDeleteModal({ type: 'task', id: task.id, name: task.title }); setDeleteAssociatedTasks(false); }} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-red-500/10 hover:text-red-500 transition-colors ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </div>
                     );
@@ -2265,8 +2316,6 @@ export default function App() {
         </button>
       </nav>
 
-      {/* --- MODALE --- */}
-
       {/* NOWY KREATOR CELÓW (WIZARD) */}
       {(showAddGoalModal || goalWizardStep > 0) && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] overflow-y-auto">
@@ -2280,7 +2329,7 @@ export default function App() {
                     </button>
                  )}
                  <h3 className={currentFontConfig.sizeClass + ' font-bold ' + tStyle.titleText}>
-                    {goalWizardStep === 1 ? 'Krok 1: Kategoria' : goalWizardStep === 2 ? 'Krok 2: Parametry Celu' : goalWizardStep === 3 ? 'Krok 3: Synergia' : 'Krok 4: Nawyk'}
+                    {goalWizardStep === 1 ? 'Krok 1: Kategoria' : goalWizardStep === 2 ? 'Krok 2: Wybierz Cel' : goalWizardStep === 3 ? 'Krok 3: Parametry Celu' : goalWizardStep === 4 ? 'Krok 4: Synergia' : 'Krok 5: Nawyk'}
                  </h3>
                </div>
                <button onClick={() => { setGoalWizardStep(0); setShowAddGoalModal(false); }} className={'p-1.5 rounded-full hover:bg-slate-500/20 transition-colors'}><X className="w-5 h-5"/></button>
@@ -2302,36 +2351,58 @@ export default function App() {
               </div>
             )}
 
-            {/* KROK 2: SZCZEGÓŁY CELU */}
+            {/* KROK 2: KAFELKI Z TYPEM CELU */}
             {goalWizardStep === 2 && wizardData.categoryKey && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-fadeIn">
+                {GOAL_CATEGORIES_CONFIG[wizardData.categoryKey].types.map(t => (
+                  <button 
+                    key={t.id}
+                    onClick={() => { 
+                        setWizardData({...wizardData, type: t.id}); 
+                        setGoalWizardStep(3); 
+                        clearError('wizardType'); 
+                    }}
+                    className={`p-4 rounded-2xl border text-center transition-all bg-slate-500/10 border-slate-500/30 hover:bg-slate-500/20 hover:scale-[1.02] active:scale-95`}
+                  >
+                    {getTypeIcon(t.id)}
+                    <span className={'font-bold ' + currentFontConfig.smallClass + ' ' + tStyle.titleText}>{t.label.split(' (')[0]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* KROK 3: SZCZEGÓŁY CELU */}
+            {goalWizardStep === 3 && wizardData.categoryKey && (
               <div className="space-y-4 animate-fadeIn">
-                {wizardData.categoryKey !== 'book' && (
-                  <div>
-                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                      {wizardData.categoryKey === 'sport' ? 'Dyscyplina sportowa' :
-                       wizardData.categoryKey === 'study' ? 'Rodzaj nauki' :
-                       wizardData.categoryKey === 'health' ? 'Nawyk zdrowotny' : 'Typ pracy / kategoria'}
-                    </label>
-                    <select 
-                      value={wizardData.type} 
-                      onChange={(e) => { setWizardData({...wizardData, type: e.target.value}); clearError('wizardType'); }} 
-                      className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.wizardType ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`}
-                    >
-                      <option value="">-- Wybierz (Wymagane) --</option>
-                      {GOAL_CATEGORIES_CONFIG[wizardData.categoryKey].types.map(t => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
-                      ))}
-                    </select>
+                
+                {/* Tryb czytania (Strony/Rozdziały) */}
+                {wizardData.categoryKey === 'book' && (
+                  <div className="pt-2 pb-4 border-b border-slate-500/20 mb-4">
+                     <label className={currentFontConfig.smallClass + ' font-medium block mb-2 ' + tStyle.subText}>Tryb czytania (Strony czy Rozdziały?)</label>
+                     <div className="grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => { setWizardData({...wizardData, bookTrackingType: 'pages', type: 'read_book'}); clearError('wizardType'); }} className={`py-3 px-2 rounded-xl border text-sm font-bold transition-all ${wizardData.bookTrackingType === 'pages' ? tStyle.optSelected : tStyle.optUnselected}`}>
+                          Po Stronach
+                        </button>
+                        <button type="button" onClick={() => { setWizardData({...wizardData, bookTrackingType: 'chapters', type: 'read_chapters'}); clearError('wizardType'); }} className={`py-3 px-2 rounded-xl border text-sm font-bold transition-all ${wizardData.bookTrackingType === 'chapters' ? tStyle.optSelected : tStyle.optUnselected}`}>
+                          Po Rozdziałach
+                        </button>
+                     </div>
                   </div>
                 )}
-                
+
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                    {wizardData.categoryKey === 'book' ? 'Tytuł książki (np. "Wiedźmin: Ostatnie Życzenie")' :
-                     wizardData.categoryKey === 'sport' ? 'Cel sportowy (np. "Bieg dookoła jeziora")' :
-                     wizardData.categoryKey === 'study' ? 'Czego się uczysz? (np. "Podstawy Pythona")' :
-                     wizardData.categoryKey === 'health' ? 'Nazwa wyzwania (np. "Więcej wody", "Detoks")' :
-                     'Nazwa projektu / celu (np. "Nowa aplikacja")'}
+                    {(() => {
+                      if (wizardData.categoryKey === 'book') return 'Tytuł książki (np. "Wiedźmin: Ostatnie Życzenie")';
+                      if (wizardData.categoryKey === 'sport') return 'Cel sportowy (np. "Bieg dookoła jeziora")';
+                      if (wizardData.categoryKey === 'study') return 'Czego się uczysz? (np. "Podstawy Pythona")';
+                      if (wizardData.categoryKey === 'health') {
+                          if (wizardData.type === 'water') return 'Nazwa celu (np. "Picie min. 2L wody dziennie")';
+                          if (wizardData.type === 'sleep') return 'Nazwa celu (np. "Zdrowy sen min. 7h")';
+                          return 'Nazwa wyzwania (np. "Detoks od cukru")';
+                      }
+                      return 'Nazwa projektu / celu (np. "Nowa aplikacja")';
+                    })()}
                   </label>
                   <input 
                     type="text" 
@@ -2341,22 +2412,46 @@ export default function App() {
                     placeholder="Wpisz nazwę... (Wymagane)" 
                   />
                 </div>
+                
+                {/* Opcje dla celu "Brak Słodyczy" - WYBÓR DNI/GODZINY */}
+                {wizardData.type === 'no_sweets' && (
+                  <div className="pt-2 border-t border-slate-500/20">
+                     <label className={currentFontConfig.smallClass + ' font-medium block mb-2 ' + tStyle.subText}>Typ wyzwania</label>
+                     <div className="grid grid-cols-2 gap-2">
+                        <button onClick={() => setWizardData({...wizardData, targetUnit: 'days'})} className={`py-3 px-2 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 ${wizardData.targetUnit === 'days' ? tStyle.optSelected : tStyle.optUnselected}`}>
+                          <CalendarIcon className="w-5 h-5" /> Cel w Dniach
+                        </button>
+                        <button onClick={() => setWizardData({...wizardData, targetUnit: 'hours'})} className={`py-3 px-2 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 ${wizardData.targetUnit === 'hours' ? tStyle.optSelectedWarning : tStyle.optUnselected}`}>
+                          <Clock className="w-5 h-5" /> Cel w Godzinach
+                        </button>
+                     </div>
+                  </div>
+                )}
 
-                <div className="pt-2 border-t border-slate-500/20">
-                  <label className="flex items-center gap-2 cursor-pointer mb-2">
-                    <input type="checkbox" checked={wizardData.isDaily} onChange={(e) => setWizardData({...wizardData, isDaily: e.target.checked})} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
-                    <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>
-                      {wizardData.categoryKey === 'health' ? 'Cel codzienny (wartość odnawia się każdego dnia)' :
-                       wizardData.categoryKey === 'book' ? 'Czytam określoną ilość dziennie (brak sztywnego deadline\'u)' :
-                       'Zadanie dzienne (odnawia się o wyznaczonej godzinie)'}
-                    </span>
-                  </label>
-                </div>
+                {wizardData.targetUnit !== 'hours' && (
+                  <div className="pt-2 border-t border-slate-500/20">
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                      <input type="checkbox" checked={wizardData.isDaily} onChange={(e) => setWizardData({...wizardData, isDaily: e.target.checked})} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
+                      <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>
+                        {wizardData.categoryKey === 'health' ? 'Cel codzienny (odnawia się każdego dnia)' :
+                         wizardData.categoryKey === 'book' ? 'Czytam określoną ilość dziennie' :
+                         'Zadanie dzienne (odnawia się codziennie)'}
+                      </span>
+                    </label>
+                  </div>
+                )}
 
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                    {wizardData.categoryKey === 'book' ? 'Liczba stron / Rozdziałów' :
-                     wizardData.type ? `Rozmiar wyzwania (w: ${getUnitForType(wizardData.type)})` : 'Rozmiar wyzwania (najpierw wybierz typ wyżej)'}
+                    {(() => {
+                      if (wizardData.type === 'read_chapters') return 'Liczba rozdziałów do przeczytania';
+                      if (wizardData.type === 'read_book') return 'Liczba stron do przeczytania';
+                      if (wizardData.type === 'no_sweets' && wizardData.targetUnit === 'hours') return 'Liczba GODZIN bez słodyczy (np. 24)';
+                      if (wizardData.type === 'water') return 'Ile dni chcesz utrzymać nawyk nawodnienia?';
+                      if (wizardData.type === 'sleep') return 'Przez ile dni chcesz pilnować zdrowego snu?';
+                      if (wizardData.type) return `Rozmiar wyzwania (w: ${getUnitForType(wizardData.type)})`;
+                      return 'Rozmiar wyzwania';
+                    })()}
                   </label>
                   <input 
                     type="number" 
@@ -2365,23 +2460,47 @@ export default function App() {
                     value={wizardData.target} 
                     onChange={(e) => { setWizardData({...wizardData, target: e.target.value}); clearError('wizardTarget'); }} 
                     className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.wizardTarget ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`} 
-                    placeholder={wizardData.categoryKey === 'book' ? "np. 320 (Wymagane)" : "np. 50 (Wymagane)"} 
+                    placeholder={wizardData.type === 'no_sweets' && wizardData.targetUnit === 'hours' ? "np. 20 (Wymagane)" : "np. 50 (Wymagane)"} 
                   />
                 </div>
+
+                {wizardData.categoryKey === 'book' && wizardData.type === 'read_chapters' && (
+                  <div className="mt-4 pt-4 border-t border-slate-500/20">
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
+                      Całkowita liczba stron w książce (Opcjonalnie, do statystyk)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={wizardData.bookTotalPages}
+                      onChange={(e) => setWizardData({...wizardData, bookTotalPages: e.target.value})}
+                      className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none focus:border-amber-500 ${tStyle.inputBg}`}
+                      placeholder="np. 320"
+                    />
+                  </div>
+                )}
                 
-                {!wizardData.isDaily && (
+                {(!wizardData.isDaily && wizardData.targetUnit !== 'hours') && (
                   <div>
                     <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                      {wizardData.categoryKey === 'book' ? 'Czas na przeczytanie (Deadline)' : 'Czas na realizację (Deadline)'}
+                      Czas na realizację (Deadline)
                     </label>
                     <input type="date" value={wizardData.dueDate} onChange={(e) => setWizardData({...wizardData, dueDate: e.target.value})} className={'w-full max-w-full box-border appearance-none rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} style={{ WebkitAppearance: 'none' }} />
+                  </div>
+                )}
+                
+                {wizardData.targetUnit === 'hours' && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl mt-2 text-amber-500">
+                    <p className={'text-xs font-medium text-center'}>
+                      Po zapisaniu wyzwania, w zakładce <strong>Dzisiaj</strong> pojawi się dedykowane zadanie ze stoperem. Kliknij ▶️, aby zacząć!
+                    </p>
                   </div>
                 )}
               </div>
             )}
 
-            {/* KROK 3: PROPOZYCJA ZADANIA */}
-            {goalWizardStep === 3 && (
+            {/* KROK 4: PROPOZYCJA ZADANIA */}
+            {goalWizardStep === 4 && (
               <div className="text-center space-y-6 animate-fadeIn py-4">
                 <div className="w-16 h-16 mx-auto bg-emerald-500/20 text-emerald-500 flex items-center justify-center rounded-2xl border border-emerald-500/40">
                   <Zap className="w-8 h-8" />
@@ -2389,7 +2508,7 @@ export default function App() {
                 <div>
                    <h4 className={'font-bold mb-2 ' + currentFontConfig.headerClass + ' ' + tStyle.titleText}>Połącz Cel z Nawykami</h4>
                    <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
-                      Cele łatwiej zrealizować, rozbijając je na codzienne lub regularne zadania. Czy chcesz ułożyć rutynę dla celu: <strong className="text-amber-500">"{wizardData.title}"</strong>?
+                      Cele łatwiej zrealizować, rozbijając je na codzienne zadania. Czy chcesz ułożyć rutynę dla celu: <strong className="text-amber-500">"{wizardData.title}"</strong>?
                    </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 pt-4">
@@ -2401,7 +2520,7 @@ export default function App() {
                    </button>
                    <button onClick={() => { 
                        setWizardData({...wizardData, createTask: true}); 
-                       setGoalWizardStep(4);
+                       setGoalWizardStep(5);
                    }} className={'py-3.5 rounded-2xl font-bold bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-500/20'}>
                      Jasne, utwórz!
                    </button>
@@ -2409,12 +2528,12 @@ export default function App() {
               </div>
             )}
 
-            {/* KROK 4: KONFIGURACJA ZADANIA */}
-            {goalWizardStep === 4 && (
+            {/* KROK 5: KONFIGURACJA ZADANIA */}
+            {goalWizardStep === 5 && (
               <div className="space-y-4 animate-fadeIn">
                  <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                    Jak nazwiesz to konkretne zadanie w liście "Dzisiaj"?
+                    Jak nazwiesz to zadanie w liście "Dzisiaj"?
                   </label>
                   <input 
                     type="text" 
@@ -2426,12 +2545,10 @@ export default function App() {
 
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                    {wizardData.categoryKey === 'book' ? 'Ile stron planujesz przeczytać na jednej sesji?' :
-                     wizardData.categoryKey === 'sport' ? `Cel na jeden trening (w: ${getUnitForType(wizardData.type)})` :
-                     wizardData.categoryKey === 'study' ? `Wartość na jedną sesję nauki (w: ${getUnitForType(wizardData.type)})` :
-                     `Wartość docelowa na jedno zadanie (w: ${getUnitForType(wizardData.type)})`}
+                    {wizardData.categoryKey === 'book' ? 'Ile zrobisz podczas jednej sesji?' :
+                     wizardData.type ? `Wartość docelowa na jedno zadanie (w: ${getUnitForType(wizardData.type)})` : 'Wartość'}
                   </label>
-                  <input type="number" step="any" min="0" placeholder={wizardData.categoryKey === 'book' ? "np. 20 (opcjonalnie)" : "np. 15 (opcjonalnie)"} value={wizardData.taskAmount} onChange={(e) => setWizardData({...wizardData, taskAmount: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                  <input type="number" step="any" min="0" placeholder="np. 15 (opcjonalnie)" value={wizardData.taskAmount} onChange={(e) => setWizardData({...wizardData, taskAmount: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
                 </div>
 
                 <div>
@@ -2445,16 +2562,14 @@ export default function App() {
 
                 {getUnitForType(wizardData.type) !== 'godz.' && getUnitForType(wizardData.type) !== 'min' && (
                   <div>
-                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Czas trwania sesji (uruchamia stoper w minutach, opcjonalnie)</label>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Czas trwania sesji (włącza stoper, opcjonalnie)</label>
                     <input type="number" placeholder="np. 30" value={wizardData.taskDuration} onChange={(e) => setWizardData({...wizardData, taskDuration: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
                   </div>
                 )}
 
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                    {wizardData.categoryKey === 'sport' ? 'Jak często będziesz trenować?' :
-                     wizardData.categoryKey === 'book' ? 'Jak często będziesz czytać?' :
-                     'Jak często chcesz nad tym pracować?'}
+                    Jak często chcesz to robić?
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => setWizardData({...wizardData, taskRepeat: 'daily'})} className={'py-3 rounded-xl transition-all font-semibold ' + (wizardData.taskRepeat === 'daily' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500 ring-2 ring-emerald-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Codziennie</button>
@@ -2465,14 +2580,15 @@ export default function App() {
               </div>
             )}
 
-            {(goalWizardStep === 1 || goalWizardStep === 2 || goalWizardStep === 4) && (
+            {/* Przycisk akceptacji dla poszczególnych kroków */}
+            {(goalWizardStep === 1 || goalWizardStep === 3 || goalWizardStep === 5) && (
               <div className="mt-6 pt-4 border-t border-slate-500/20">
                  <button 
                    onClick={handleWizardNext}
                    disabled={goalWizardStep === 1 && !wizardData.categoryKey}
-                   className={'w-full py-4 rounded-2xl font-bold transition-transform ' + (goalWizardStep === 4 ? 'bg-emerald-500 text-slate-900 shadow-emerald-500/30' : 'bg-amber-500 text-slate-900 shadow-amber-500/30') + ' disabled:opacity-50 disabled:active:scale-100 active:scale-95 shadow-lg'}
+                   className={'w-full py-4 rounded-2xl font-bold transition-transform ' + ((goalWizardStep === 5 || (goalWizardStep === 3 && wizardData.targetUnit === 'hours')) ? 'bg-emerald-500 text-slate-900 shadow-emerald-500/30' : 'bg-amber-500 text-slate-900 shadow-amber-500/30') + ' disabled:opacity-50 disabled:active:scale-100 active:scale-95 shadow-lg'}
                  >
-                   {goalWizardStep === 4 ? 'Zakończ i zapisz' : 'Dalej'}
+                   {goalWizardStep === 5 || (goalWizardStep === 3 && wizardData.targetUnit === 'hours') ? 'Zakończ i zapisz' : 'Dalej'}
                  </button>
               </div>
             )}
@@ -3180,45 +3296,88 @@ export default function App() {
             <div className="w-12 h-12 bg-red-500/20 border border-red-500/40 rounded-2xl flex items-center justify-center mx-auto mb-4 text-red-500"><AlertTriangle className="w-6 h-6" /></div>
             <h3 className={currentFontConfig.sizeClass + ' font-bold mb-2 ' + tStyle.titleText}>Potwierdź usunięcie</h3>
             <p className={currentFontConfig.smallClass + ' mb-6 ' + tStyle.subText}>Czy na pewno chcesz usunąć: <strong className="text-red-400">"{confirmDeleteModal.name}"</strong>?</p>
+            
+            {confirmDeleteModal.type === 'goal' && tasks.some(t => t.goalId === confirmDeleteModal.id) && (
+               <div className="mb-6 text-left p-3 rounded-xl bg-slate-500/10 border border-slate-500/20">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                     <input type="checkbox" checked={deleteAssociatedTasks} onChange={e => setDeleteAssociatedTasks(e.target.checked)} className="mt-1 accent-red-500 w-4 h-4 cursor-pointer" />
+                     <span className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
+                         Usuń również wszystkie zadania powiązane z tym celem ({tasks.filter(t => t.goalId === confirmDeleteModal.id).length} szt.)
+                     </span>
+                  </label>
+               </div>
+            )}
+
             <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteModal(null)} className={'flex-1 py-3 rounded-2xl font-semibold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
+              <button onClick={() => { setConfirmDeleteModal(null); setDeleteAssociatedTasks(false); }} className={'flex-1 py-3 rounded-2xl font-semibold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
               <button onClick={executeDelete} className={'flex-1 bg-red-500 hover:bg-red-400 text-white py-3 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' shadow-lg shadow-red-500/30'}>Usuń</button>
             </div>
           </div>
         </div>
       )}
 
-      {confirmCompleteModal && (
+{confirmCompleteModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[150] animate-fadeIn">
           <div className={'w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center border ' + tStyle.modalBg}>
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 ${confirmCompleteModal.isDone ? 'bg-amber-500/20 text-amber-500 border-amber-500/40' : 'bg-emerald-500/20 text-emerald-500 border-emerald-500/40'} border`}>
                 {confirmCompleteModal.isDone ? <RotateCcw className="w-6 h-6" /> : <Check className="w-6 h-6" />}
             </div>
             <h3 className={currentFontConfig.sizeClass + ' font-bold mb-2 ' + tStyle.titleText}>
-               Potwierdź {confirmCompleteModal.isDone ? 'cofnięcie' : 'wykonanie'}
+                Potwierdź {confirmCompleteModal.isDone ? 'cofnięcie' : 'wykonanie'}
             </h3>
             <p className={currentFontConfig.smallClass + ' mb-6 ' + tStyle.subText}>
-               Czy na pewno chcesz oznaczyć jako <strong className={confirmCompleteModal.isDone ? "text-amber-500" : "text-emerald-500"}>{confirmCompleteModal.isDone ? 'NIEzrobione' : 'zrobione'}</strong>: <br/> "{confirmCompleteModal.name}"?
+                Czy na pewno chcesz oznaczyć jako <strong className={confirmCompleteModal.isDone ? "text-amber-500" : "text-emerald-500"}>{confirmCompleteModal.isDone ? 'NIEzrobione' : 'zrobione'}</strong>: <br/> "{confirmCompleteModal.name}"?
             </p>
 
             {!confirmCompleteModal.isDone && confirmCompleteModal.goalId && (
                 <div className="mb-6 text-left border-t border-slate-500/20 pt-4 mt-4">
-                    <label className={currentFontConfig.smallClass + ' font-medium block mb-2 ' + tStyle.subText}>
-                        <Target className="w-4 h-4 inline mr-1 text-amber-500" />
-                        Zadanie jest powiązane z celem. O ile zaktualizować cel? (np. liczba przeczytanych stron):
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-3 text-center ' + tStyle.subText}>
+                        <Target className="w-5 h-5 inline mr-1 text-amber-500" />
+                        O ile zaktualizować postęp celu?
                     </label>
-                    <input 
-                        type="number" 
-                        step="any"
-                        value={completeTaskValue} 
-                        onChange={(e) => setCompleteTaskValue(e.target.value)} 
-                        placeholder="Zostaw puste, by nie aktualizować"
-                        className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} 
-                    />
+                    
+                    <div className="flex items-center justify-center gap-3">
+                        <button 
+                            onClick={() => {
+                                const current = parseFloat(completeTaskValue === '' ? '1' : completeTaskValue) || 1;
+                                setCompleteTaskValue(String(Math.max(1, current - 1)));
+                            }}
+                            className={'w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-2xl border text-2xl font-bold transition-transform active:scale-95 hover:bg-slate-500/20 ' + tStyle.cardBg}
+                        >
+                            -
+                        </button>
+                        
+                        <input 
+                            type="number" 
+                            step="any"
+                            value={completeTaskValue === '' ? '1' : completeTaskValue} 
+                            onChange={(e) => setCompleteTaskValue(e.target.value)} 
+                            className={'w-24 text-center font-bold text-xl rounded-2xl px-2 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 ' + tStyle.inputBg} 
+                        />
+                        
+                        <button 
+                            onClick={() => {
+                                const current = parseFloat(completeTaskValue === '' ? '1' : completeTaskValue) || 1;
+                                setCompleteTaskValue(String(current + 1));
+                            }}
+                            className={'w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-2xl border text-2xl font-bold transition-transform active:scale-95 bg-emerald-500/20 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/30'}
+                        >
+                            +
+                        </button>
+                    </div>
+
+                    <div className="mt-4 text-center">
+                        <button 
+                            onClick={() => setCompleteTaskValue('0')} 
+                            className={'text-xs font-semibold px-4 py-2 rounded-xl opacity-60 hover:opacity-100 transition-all border border-slate-500/30 hover:bg-slate-500/10 ' + tStyle.titleText}
+                        >
+                            Nie dodawaj postępu (0)
+                        </button>
+                    </div>
                 </div>
             )}
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-2">
               <button onClick={() => setConfirmCompleteModal(null)} className={'flex-1 py-3 rounded-2xl font-semibold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
               <button onClick={executeComplete} className={`flex-1 py-3 rounded-2xl font-bold ${currentFontConfig.smallClass} shadow-lg text-slate-950 ${confirmCompleteModal.isDone ? 'bg-amber-500 hover:bg-amber-400 shadow-amber-500/30' : 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/30'}`}>
                   {confirmCompleteModal.isDone ? 'Cofnij' : 'Zrobione'}

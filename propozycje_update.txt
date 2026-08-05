@@ -1,0 +1,29 @@
+1. Zrzut Myśli (Brain Dump / Inbox)
+W RPM planowanie zaczyna się od "opróżnienia głowy" (Capture). Zanim przypiszesz zadaniu cel i powód, musisz wyrzucić z siebie wszystkie stresujące myśli i obowiązki.
+
+Jak to wdrożyć: Dodanie prostej zakładki "Zrzut myśli" (Inbox), w której znajduje się tylko jedno pole tekstowe. Szybko wpisujesz tam wszystko, co zaprząta Ci głowę (np. "kupić karmę", "skończyć raport", "odpisać szefowi"). Dopiero w wolnej chwili klikasz na te luźne myśli i za pomocą kreatora zamieniasz je w pełnoprawne bloki RPM (Wynik -> Powód -> Plan Działania) lub odrzucasz.
+
+
+2. Priorytetyzacja MAP (Zasada 80/20)
+W kroku M (Massive Action Plan) Robbins zawsze podkreśla, że nie wszystkie zadania są równe. 20% działań przynosi 80% wyników. Obecnie Twoje zadania różnią się trudnością, ale nie "wagą" dla samego celu.
+
+Jak to wdrożyć: Dodanie przełącznika "⭐ Kluczowe działanie (Must-Do)" przy tworzeniu zadania. Takie zadania byłyby przypięte na samej górze listy "Dzisiaj", podświetlone mocnym kolorem (np. złotym) i dawałyby duży mnożnik punktów (PKT). Jeśli użytkownik wykona tylko to jedno zadanie z całego MAP, i tak wie, że pchnął cel mocno do przodu.
+
+
+3. Obszary Zarządzania (Areas of Management) z tożsamością
+W Twojej aplikacji masz już wbudowane "Kategorie" (Zdrowie, Sport, Książka). W RPM nazywa się to "Areas of Management" (Obszary zarządzania życiem). Tony uczy, aby do każdego obszaru przypisać inspirującą tożsamość lub wizję.
+
+Jak to wdrożyć: W widoku "Cele" moglibyśmy dodać u góry kafelki z Twoimi kategoriami. Po kliknięciu w "Zdrowie" użytkownik mógłby zdefiniować swoją Tożsamość/Wizję (np. "Jestem niepowstrzymanym wulkanem energii"). Ta wizja wyświetlałaby się zawsze jako nagłówek nad zadaniami z kategorii "Zdrowie", ciągle przypominając o ostatecznym powodzie dbania o ten obszar.
+
+
+4. Tygodniowy Przegląd (Weekly Hour of Power)
+RPM to nie tylko planowanie dni, ale przede wszystkim sterowanie tygodniami. Żeby metoda działała, Robbins zaleca cotygodniową sesję kalibracji.
+
+Jak to wdrożyć: W niedzielę wieczorem (lub w zdefiniowanym w ustawieniach dniu) aplikacja mogłaby wyświetlać specjalny, pełnoekranowy modal (podobny do tego z trofeami). Zadałaby w nim 3 pytania:
+
+Co było moim największym sukcesem w tym tygodniu?
+
+Czego się nauczyłem?
+
+Jakie są moje 3 absolutnie kluczowe Wyniki (Results) na nadchodzący tydzień?
+Odpowiedzi zapisywałyby się w historii, budując niesamowity dziennik postępów.

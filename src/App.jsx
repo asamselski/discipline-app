@@ -328,8 +328,10 @@ export default function App() {
     target: '',
     dueDate: getAppDayString(),
     isDaily: false,
+    purpose: '',
     createTask: false,
     taskRepeat: 'daily',
+    customDates: [],
     taskTitle: '',
     taskAmount: '',
     taskDifficulty: 'medium',
@@ -340,8 +342,8 @@ export default function App() {
   const openGoalWizard = () => {
     setWizardData({
       categoryKey: '', type: '', targetUnit: 'days', title: '', target: '', 
-      dueDate: getAppDayString(), isDaily: false, 
-      createTask: false, taskRepeat: 'daily', taskTitle: '',
+      dueDate: getAppDayString(), isDaily: false, purpose: '',
+      createTask: false, taskRepeat: 'daily', taskTitle: '', customDates: [],
       taskAmount: '', taskDifficulty: 'medium', taskDuration: '',
       bookTotalPages: ''
     });
@@ -615,65 +617,58 @@ export default function App() {
     setDeleteAssociatedTasks(false);
   };
 
-  const executeComplete = () => {
+const executeComplete = () => {
     if (!confirmCompleteModal) return;
     const { type, id, isDone, goalId, targetDate } = confirmCompleteModal;
     const dateToUse = targetDate || todayStr;
 
     if (type === 'task') {
-      toggleTaskStatus(id, dateToUse);
+      const taskToUpdate = tasks.find(t => t.id === id);
+      let valToModify = 0;
 
-      // Ustawiamy '1' jako domyślną wartość, jeśli pole jest puste
-      const finalTaskValue = (goalId && completeTaskValue === '') ? '1' : completeTaskValue;
-
-      if (!isDone && goalId && finalTaskValue) {
-         const val = parseFloat(finalTaskValue);
-         if (!isNaN(val) && val > 0) {
-             const targetGoal = goals.find(g => g.id === goalId);
-             if (targetGoal) {
-                 let unitLabel = 'jednostek';
-                 if (targetGoal.type === 'study') unitLabel = 'godz.';
-                 else if (targetGoal.type === 'no_sweets') unitLabel = 'dni';
-                 else if (targetGoal.type === 'read_book') unitLabel = 'stron';
-                 else if (targetGoal.type === 'read_chapters') unitLabel = 'rozdziałów';
-                 else unitLabel = 'wartość';
-
-                 const newWorkout = {
-                     id: Date.now(),
-                     taskId: id, 
-                     goalId: targetGoal.id, 
-                     date: dateToUse, 
-                     type: targetGoal.type,
-                     amount: val,
-                     unit: unitLabel,
-                     pkt: 0 
-                 };
-                 
-                 setWorkouts(prev => [newWorkout, ...prev]);
-
-                 if (!targetGoal.isDaily) {
-                     setGoals(prev => prev.map(g => g.id === targetGoal.id ? { ...g, currentPage: Math.min(g.target, (g.currentPage || 0) + val) } : g));
+      if (goalId) {
+         const targetGoal = goals.find(g => g.id === goalId);
+         if (targetGoal && !targetGoal.isDaily) {
+             if (!isDone) {
+                 // Zadanie zaznaczane: pobieramy wartość z inputa i DODAJEMY do celu
+                 const finalTaskValue = completeTaskValue === '' ? '1' : completeTaskValue;
+                 valToModify = parseFloat(finalTaskValue) || 0;
+                 if (valToModify > 0) {
+                     setGoals(prev => prev.map(g => g.id === targetGoal.id ? { ...g, currentPage: Math.min(g.target, (g.currentPage || 0) + valToModify) } : g));
+                 }
+             } else {
+                 // Zadanie cofane: odczytujemy zapisaną wartość i ODEJMUJEMY od celu (automatycznie)
+                 valToModify = taskToUpdate?.goalProgressHistory?.[dateToUse] || 0;
+                 if (valToModify > 0) {
+                     setGoals(prev => prev.map(g => g.id === targetGoal.id ? { ...g, currentPage: Math.max(0, (g.currentPage || 0) - valToModify) } : g));
                  }
              }
          }
-      } else if (isDone && goalId) {
-         const workoutToUndo = workouts.find(w => w.taskId === id && w.date === dateToUse);
-         
-         if (workoutToUndo) {
-             setWorkouts(prev => prev.filter(w => w.id !== workoutToUndo.id));
-             
-             const targetGoal = goals.find(g => g.id === goalId);
-             if (targetGoal && !targetGoal.isDaily) {
-                 setGoals(prev => prev.map(g => {
-                     if (g.id === targetGoal.id) {
-                         return { ...g, currentPage: Math.max(0, (g.currentPage || 0) - workoutToUndo.amount) };
-                     }
-                     return g;
-                 }));
-             }
-         }
       }
+
+      // Aktualizacja statusu zadania oraz historii postępu
+      setTasks(prev => prev.map(t => {
+        if (t.id === id) {
+          const newHistory = { ...(t.goalProgressHistory || {}) };
+          if (!isDone) {
+              if (valToModify > 0) newHistory[dateToUse] = valToModify; // Zapisuje, ile dodałeś do celu
+          } else {
+              delete newHistory[dateToUse]; // Czyścimy pamięć po cofnięciu
+          }
+
+          if (t.repeat && t.repeat !== 'once') {
+            const currentDone = Boolean(t.completedDates && t.completedDates[dateToUse]);
+            const updatedDates = { ...(t.completedDates || {}), [dateToUse]: !currentDone };
+            return { ...t, completedDates: updatedDates, isRunning: false, goalProgressHistory: newHistory };
+          } else {
+            const currentDone = Boolean(t.isCompleted);
+            return { ...t, isCompleted: !currentDone, completedAt: !currentDone ? dateToUse : null, isRunning: false, goalProgressHistory: newHistory };
+          }
+        }
+        return t;
+      }));
     }
+    
     setConfirmCompleteModal(null);
     setCompleteTaskValue('');
   };
@@ -850,7 +845,7 @@ export default function App() {
     setEditingWorkout(null);
   };
 
-  const handleWizardNext = () => {
+const handleWizardNext = () => {
     if (goalWizardStep === 1 && wizardData.categoryKey) {
        setGoalWizardStep(2); 
     } 
@@ -865,6 +860,18 @@ export default function App() {
         return;
       }
       
+      // Przechodzimy do nowego kroku 4: PURPOSE (Dlaczego?)
+      setGoalWizardStep(4); 
+    }
+    else if (goalWizardStep === 4) {
+      let errs = {};
+      if (!wizardData.purpose.trim()) errs.wizardPurpose = true; // Wymuszamy znalezienie powodu!
+      
+      if (Object.keys(errs).length > 0) {
+        setFormErrors(prev => ({...prev, ...errs}));
+        return;
+      }
+
       if (wizardData.type === 'no_sweets' && wizardData.targetUnit === 'hours') {
          finalizeWizard(true);
          return;
@@ -875,9 +882,9 @@ export default function App() {
       if (wizardData.categoryKey === 'sport') generatedTaskTitle = `Trening: ${wizardData.title.trim()}`;
       
       setWizardData({...wizardData, taskTitle: generatedTaskTitle});
-      setGoalWizardStep(4); 
+      setGoalWizardStep(5); // Krok "Synergia" przesuwa się na pozycję 5
     }
-    else if (goalWizardStep === 5) {
+    else if (goalWizardStep === 6) { // Finalny krok zadania to teraz 6
       if (wizardData.createTask && !wizardData.taskTitle.trim()) {
          setFormErrors(prev => ({ ...prev, wizardTaskTitle: true }));
          return;
@@ -900,7 +907,7 @@ export default function App() {
       currentPage: 0,
       dueDate: wizardData.isDaily ? null : wizardData.dueDate,
       isDaily: wizardData.isDaily,
-      comment: '',
+      comment: wizardData.purpose.trim(),
       totalPages: wizardData.categoryKey === 'book' && wizardData.type === 'read_chapters' ? (parseInt(wizardData.bookTotalPages) || null) : null
     };
     
@@ -952,7 +959,7 @@ export default function App() {
          difficulty: wizardData.taskDifficulty || 'medium',
          repeat: wizardData.taskRepeat,
          intervalDays: wizardData.taskRepeat === 'interval' ? 2 : 1,
-         customDates: [],
+         customDates: wizardData.taskRepeat === 'custom' ? wizardData.customDates : [],
          dueDate: wizardData.dueDate,
          duration: durationMin,
          hasReminder: false,
@@ -1699,7 +1706,7 @@ export default function App() {
                 {allTodayTasks.length === 0 ? (
                     <p className={'text-center py-3 opacity-60 ' + currentFontConfig.smallClass + ' ' + tStyle.subText}>Brak zadań na dziś.</p>
                 ) : (
-                   <div className="space-y-3">
+<div className="space-y-3">
                      {allTodayTasks.map((task) => {
                        const isDone = isTaskDoneForDate(task, todayStr);
                        const dailyStreak = task.repeat === 'daily' ? getTaskStreak(task.id) : 0;
@@ -1707,11 +1714,32 @@ export default function App() {
                        
                        const cTheme = getCategoryTheme(task.category);
 
+                       // --- LOGIKA OPÓŹNIONYCH ZADAŃ ---
+                       let isOverdue = false;
+                       let overdueDays = 0;
+                       if ((!task.repeat || task.repeat === 'once') && task.dueDate && task.dueDate < todayStr && !isDone) {
+                           isOverdue = true;
+                           const due = parseLocalDate(task.dueDate);
+                           const today = parseLocalDate(todayStr);
+                           due.setHours(0,0,0,0);
+                           today.setHours(0,0,0,0);
+                           overdueDays = Math.round((today - due) / (1000 * 60 * 60 * 24));
+                       }
+                       
+                       let overdueRingClass = '';
+                       if (isOverdue) {
+                           // Jeżeli opóźnienie jest większe niż 2 dni -> czerwona ramka, inaczej żółta
+                           overdueRingClass = overdueDays > 2 
+                             ? ' ring-2 ring-red-500/80 bg-red-500/10' 
+                             : ' ring-2 ring-amber-500/80 bg-amber-500/10';
+                       }
+                       // --------------------------------
+
                      return (
                          <div key={task.id} onClick={() => {
                              setConfirmCompleteModal({ type: 'task', id: task.id, name: task.title, isDone, goalId: task.goalId, targetDate: todayStr });
                              setCompleteTaskValue('');
-                         }} className={'flex flex-col gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer shadow-sm ' + (isDone ? `${cTheme.itemDoneBg} ${cTheme.itemBorder} opacity-75` : `${cTheme.itemBg} ${cTheme.itemBorder}`)}>
+                         }} className={'flex flex-col gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer shadow-sm ' + (isDone ? `${cTheme.itemDoneBg} ${cTheme.itemBorder} opacity-75` : `${cTheme.itemBg} ${cTheme.itemBorder}`) + overdueRingClass}>
                             
                             {/* GŁÓWNY WIERSZ: Checkbox + Teksty + Menu */}
                             <div className="flex items-start justify-between w-full">
@@ -1727,11 +1755,28 @@ export default function App() {
                                        {task.category}
                                      </span>
 
-                                     {associatedGoal && (
-                                       <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                         <Target className="w-3 h-3" /> {associatedGoal.title}
-                                      </span>
+                                     {/* BADGE OPÓŹNIENIA */}
+                                     {isOverdue && (
+                                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border ${overdueDays > 2 ? 'bg-red-500/20 text-red-500 border-red-500/40' : 'bg-amber-500/20 text-amber-500 border-amber-500/40'}`}>
+                                          <AlertTriangle className="w-3 h-3" /> Niezrealizowane od {overdueDays} {overdueDays === 1 ? 'dnia' : 'dni'}
+                                       </span>
                                      )}
+
+                                    {associatedGoal && (
+                                      <div className="w-full mt-1.5 flex flex-col gap-1.5">
+                                        <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 w-max">
+                                          <Target className="w-3 h-3" /> {associatedGoal.title}
+                                        </span>
+                                        {/* Tu wyświetlamy "Purpose" z RPM jako motywacyjne przypomnienie pod zadaniem */}
+                                        {associatedGoal.comment && !isDone && (
+                                          <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                                            <span className="text-[10px] md:text-xs text-amber-600 dark:text-amber-400 font-medium italic flex items-start gap-1.5 leading-snug">
+                                              <Flame className="w-3 h-3 mt-0.5 shrink-0" /> "{associatedGoal.comment}"
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                      {task.hasReminder && (
                                        <span className="bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                                          <Bell className="w-3 h-3" /> {task.reminderTime}
@@ -2316,7 +2361,7 @@ export default function App() {
         </button>
       </nav>
 
-      {/* NOWY KREATOR CELÓW (WIZARD) */}
+{/* NOWY KREATOR CELÓW (WIZARD) */}
       {(showAddGoalModal || goalWizardStep > 0) && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] overflow-y-auto">
           <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
@@ -2329,7 +2374,12 @@ export default function App() {
                     </button>
                  )}
                  <h3 className={currentFontConfig.sizeClass + ' font-bold ' + tStyle.titleText}>
-                    {goalWizardStep === 1 ? 'Krok 1: Kategoria' : goalWizardStep === 2 ? 'Krok 2: Wybierz Cel' : goalWizardStep === 3 ? 'Krok 3: Parametry Celu' : goalWizardStep === 4 ? 'Krok 4: Synergia' : 'Krok 5: Nawyk'}
+                    {goalWizardStep === 1 ? 'Krok 1: Wybierz Obszar' : 
+                     goalWizardStep === 2 ? 'Krok 2: Typ Celu' : 
+                     goalWizardStep === 3 ? 'Krok 3: [R] Result (Czego pragniesz?)' : 
+                     goalWizardStep === 4 ? 'Krok 4: [P] Purpose (Dlaczego?)' : 
+                     goalWizardStep === 5 ? 'Krok 5: [M] Akcja (Synergia)' : 
+                     'Krok 6: [M] Action Plan (Zadanie)'}
                  </h3>
                </div>
                <button onClick={() => { setGoalWizardStep(0); setShowAddGoalModal(false); }} className={'p-1.5 rounded-full hover:bg-slate-500/20 transition-colors'}><X className="w-5 h-5"/></button>
@@ -2499,16 +2549,42 @@ export default function App() {
               </div>
             )}
 
-            {/* KROK 4: PROPOZYCJA ZADANIA */}
+            {/* KROK 4: PURPOSE (Dlaczego to musisz zrobić?) */}
             {goalWizardStep === 4 && (
+              <div className="space-y-4 animate-fadeIn py-2">
+                <div className="text-center mb-6">
+                  <div className="w-16 h-16 mx-auto bg-amber-500/20 text-amber-500 flex items-center justify-center rounded-2xl border border-amber-500/40 mb-4">
+                    <Flame className="w-8 h-8" />
+                  </div>
+                  <h4 className={'font-bold mb-2 ' + currentFontConfig.headerClass + ' ' + tStyle.titleText}>[P] Purpose – Dlaczego to robisz?</h4>
+                  <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
+                    Tony Robbins uważa, że to emocje dają nam napęd. Gdy masz wystarczająco silne "Dlaczego", znajdziesz każde "Jak". 
+                    <br/><strong className="text-amber-500 mt-2 block">Dlaczego to dla Ciebie absolutnie konieczne? Jak się poczujesz, gdy to osiągniesz?</strong>
+                  </p>
+                </div>
+                <div>
+                  <textarea
+                    rows={4}
+                    value={wizardData.purpose}
+                    onChange={(e) => { setWizardData({...wizardData, purpose: e.target.value}); clearError('wizardPurpose'); }}
+                    className={`w-full rounded-2xl px-4 py-3 resize-none ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.wizardPurpose ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-amber-500'} ${tStyle.inputBg}`}
+                    placeholder="Np. Chcę odzyskać pewność siebie, przestać czuć zmęczenie każdego dnia i udowodnić sobie, że potrafię trzymać dyscyplinę..."
+                  />
+                  {formErrors.wizardPurpose && <span className="text-red-500 text-xs font-bold mt-1 block">Zatrzymaj się. Musisz znaleźć swój powód, by iść naprzód!</span>}
+                </div>
+              </div>
+            )}
+
+            {/* KROK 5: [M] MASSIVE ACTION PLAN - Wstęp */}
+            {goalWizardStep === 5 && (
               <div className="text-center space-y-6 animate-fadeIn py-4">
                 <div className="w-16 h-16 mx-auto bg-emerald-500/20 text-emerald-500 flex items-center justify-center rounded-2xl border border-emerald-500/40">
                   <Zap className="w-8 h-8" />
                 </div>
                 <div>
-                   <h4 className={'font-bold mb-2 ' + currentFontConfig.headerClass + ' ' + tStyle.titleText}>Połącz Cel z Nawykami</h4>
+                   <h4 className={'font-bold mb-2 ' + currentFontConfig.headerClass + ' ' + tStyle.titleText}>[M] Zmasowany Plan Działania</h4>
                    <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
-                      Cele łatwiej zrealizować, rozbijając je na codzienne zadania. Czy chcesz ułożyć rutynę dla celu: <strong className="text-amber-500">"{wizardData.title}"</strong>?
+                      Wielkie cele realizuje się małymi krokami. Skonfigurujmy Twój Massive Action Plan (MAP). Czy chcesz od razu wygenerować konkretne zadanie dla celu: <strong className="text-amber-500">"{wizardData.title}"</strong>?
                    </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 pt-4">
@@ -2516,11 +2592,11 @@ export default function App() {
                        setWizardData({...wizardData, createTask: false}); 
                        finalizeWizard(false); 
                    }} className={'py-3.5 rounded-2xl font-bold ' + tStyle.modalBtnBg}>
-                     Nie, dziękuję
+                     Nie, sam coś wymyślę
                    </button>
                    <button onClick={() => { 
                        setWizardData({...wizardData, createTask: true}); 
-                       setGoalWizardStep(5);
+                       setGoalWizardStep(6);
                    }} className={'py-3.5 rounded-2xl font-bold bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-500/20'}>
                      Jasne, utwórz!
                    </button>
@@ -2528,12 +2604,12 @@ export default function App() {
               </div>
             )}
 
-            {/* KROK 5: KONFIGURACJA ZADANIA */}
-            {goalWizardStep === 5 && (
+            {/* KROK 6: KONFIGURACJA ZADANIA */}
+            {goalWizardStep === 6 && (
               <div className="space-y-4 animate-fadeIn">
                  <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                    Jak nazwiesz to zadanie w liście "Dzisiaj"?
+                    Jak nazwiesz to konkretne działanie w liście "Dzisiaj"?
                   </label>
                   <input 
                     type="text" 
@@ -2569,85 +2645,53 @@ export default function App() {
 
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                    Jak często chcesz to robić?
+                    Jak często powtarzasz tę akcję?
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => setWizardData({...wizardData, taskRepeat: 'daily'})} className={'py-3 rounded-xl transition-all font-semibold ' + (wizardData.taskRepeat === 'daily' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500 ring-2 ring-emerald-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Codziennie</button>
                     <button type="button" onClick={() => setWizardData({...wizardData, taskRepeat: 'interval'})} className={'py-3 rounded-xl transition-all font-semibold ' + (wizardData.taskRepeat === 'interval' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500 ring-2 ring-emerald-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Co 2 dni</button>
+                    <button type="button" onClick={() => setWizardData({...wizardData, taskRepeat: 'custom'})} className={'py-3 rounded-xl transition-all font-semibold ' + (wizardData.taskRepeat === 'custom' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500 ring-2 ring-emerald-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Niestandardowe</button>
                     <button type="button" onClick={() => setWizardData({...wizardData, taskRepeat: 'once'})} className={'col-span-2 py-3 rounded-xl transition-all font-semibold ' + (wizardData.taskRepeat === 'once' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500 ring-2 ring-emerald-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Cel krótkoterminowy (Jednorazowo)</button>
                   </div>
                 </div>
+
+                {/* KALENDARZ DLA ZADAŃ NIESTANDARDOWYCH W KREATORZE */}
+                {wizardData.taskRepeat === 'custom' && (
+                  <div className="mt-3 space-y-2 animate-fadeIn">
+                    <label className={currentFontConfig.smallClass + ' font-medium block ' + tStyle.subText}>Zaznacz dni w kalendarzu:</label>
+                    <div className={'p-3 rounded-2xl border ' + tStyle.cardBg}>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className={'font-bold ' + currentFontConfig.smallClass + ' ' + tStyle.titleText}>{taskPickerDate.toLocaleString('pl-PL', { month: 'long', year: 'numeric' })}</span>
+                        <div className="flex items-center gap-1">
+                          <button type="button" onClick={() => setTaskPickerDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} className="p-1 rounded hover:bg-slate-500/20"><ChevronLeft className="w-4 h-4" /></button>
+                          <button type="button" onClick={() => setTaskPickerDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))} className="p-1 rounded hover:bg-slate-500/20"><ChevronRight className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                      <div className={'grid grid-cols-7 gap-1 text-center text-[10px] font-semibold mb-1 ' + tStyle.subText}>
+                        <span>Pn</span><span>Wt</span><span>Śr</span><span>Cz</span><span>Pt</span><span>Sob</span><span>Ndz</span>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {renderCustomCalendar(true, wizardData, setWizardData)}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Przycisk akceptacji dla poszczególnych kroków */}
-            {(goalWizardStep === 1 || goalWizardStep === 3 || goalWizardStep === 5) && (
+            {/* DOLNY PRZYCISK ZATWIERDZAJĄCY KROK */}
+            {(goalWizardStep === 1 || goalWizardStep === 3 || goalWizardStep === 4 || goalWizardStep === 6) && (
               <div className="mt-6 pt-4 border-t border-slate-500/20">
                  <button 
                    onClick={handleWizardNext}
                    disabled={goalWizardStep === 1 && !wizardData.categoryKey}
-                   className={'w-full py-4 rounded-2xl font-bold transition-transform ' + ((goalWizardStep === 5 || (goalWizardStep === 3 && wizardData.targetUnit === 'hours')) ? 'bg-emerald-500 text-slate-900 shadow-emerald-500/30' : 'bg-amber-500 text-slate-900 shadow-amber-500/30') + ' disabled:opacity-50 disabled:active:scale-100 active:scale-95 shadow-lg'}
+                   className={'w-full py-4 rounded-2xl font-bold transition-transform ' + ((goalWizardStep === 6 || (goalWizardStep === 4 && wizardData.type === 'no_sweets' && wizardData.targetUnit === 'hours')) ? 'bg-emerald-500 text-slate-900 shadow-emerald-500/30' : 'bg-amber-500 text-slate-900 shadow-amber-500/30') + ' disabled:opacity-50 disabled:active:scale-100 active:scale-95 shadow-lg'}
                  >
-                   {goalWizardStep === 5 || (goalWizardStep === 3 && wizardData.targetUnit === 'hours') ? 'Zakończ i zapisz' : 'Dalej'}
+                   {goalWizardStep === 6 || (goalWizardStep === 4 && wizardData.type === 'no_sweets' && wizardData.targetUnit === 'hours') ? 'Zakończ i aktywuj' : 'Dalej'}
                  </button>
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {showTrophiesModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[120] overflow-y-auto">
-          <div className={'w-full max-w-3xl max-h-[85vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 md:p-8 shadow-2xl border flex flex-col ' + tStyle.modalBg}>
-            <div className="flex justify-between items-center mb-6 pb-3 border-b border-slate-500/20">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-500 border border-amber-500/40">
-                  <Award className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>Moja Gablota Trofeów</h3>
-                  <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Wszystkie zdobyte osiągnięcia ({Object.keys(earnedTrophies).length}/{TROPHIES.length})</p>
-                </div>
-              </div>
-              <button onClick={() => setShowTrophiesModal(false)} className={'p-2 rounded-full transition-colors ' + tStyle.modalBtnBg}><X className="w-5 h-5" /></button>
-            </div>
-
-            <div className="space-y-8 flex-1 overflow-y-auto pr-1 pb-4">
-              {['bronze', 'silver', 'gold', 'platinum'].map(rank => {
-                  const trophiesInRank = sortedTrophies.filter(t => t.rank === rank);
-                  if (trophiesInRank.length === 0) return null;
-                  const rankName = rank === 'platinum' ? 'Platynowe' : rank === 'gold' ? 'Złote' : rank === 'silver' ? 'Srebrne' : 'Brązowe';
-                  const rankColor = rank === 'platinum' ? 'text-cyan-400' : rank === 'gold' ? 'text-amber-500' : rank === 'silver' ? 'text-slate-300' : 'text-orange-500';
-
-                  return (
-                      <div key={rank}>
-                          <h4 className={`font-bold uppercase tracking-wider mb-4 border-b border-slate-500/20 pb-2 ${rankColor}`}>{rankName} Trofea</h4>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              {trophiesInRank.map(trophy => {
-                                  const isEarned = Boolean(earnedTrophies[trophy.id]);
-                                  const colors = getTrophyColors(trophy.rank, isEarned);
-                                  return (
-                                      <div key={trophy.id} 
-                                           onClick={() => setNewTrophyModal(trophy)}
-                                           className={`p-4 rounded-2xl border flex flex-col items-center text-center transition-all cursor-pointer hover:scale-105 ${colors}`}>
-                                          <div className="mb-3 relative">
-                                              {isEarned ? <Award className="w-8 h-8" /> : <Lock className="w-8 h-8 opacity-50" />}
-                                          </div>
-                                          <span className="font-bold text-sm mb-1">{trophy.title}</span>
-                                          <span className="text-[10px] opacity-70 leading-snug">{trophy.desc}</span>
-                                          {isEarned && <span className="text-[9px] mt-3 font-mono opacity-60 bg-slate-900/20 px-2 py-0.5 rounded">{earnedTrophies[trophy.id]}</span>}
-                                      </div>
-                                  )
-                              })}
-                          </div>
-                      </div>
-                  )
-              })}
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-slate-500/25">
-              <button onClick={() => setShowTrophiesModal(false)} className={'w-full py-3.5 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Zamknij gablotę</button>
-            </div>
           </div>
         </div>
       )}
@@ -3329,6 +3373,7 @@ export default function App() {
                 Czy na pewno chcesz oznaczyć jako <strong className={confirmCompleteModal.isDone ? "text-amber-500" : "text-emerald-500"}>{confirmCompleteModal.isDone ? 'NIEzrobione' : 'zrobione'}</strong>: <br/> "{confirmCompleteModal.name}"?
             </p>
 
+            {/* Wyświetla pole TYLKO przy ZAZNACZANIU zadania */}
             {!confirmCompleteModal.isDone && confirmCompleteModal.goalId && (
                 <div className="mb-6 text-left border-t border-slate-500/20 pt-4 mt-4">
                     <label className={currentFontConfig.smallClass + ' font-medium block mb-3 text-center ' + tStyle.subText}>

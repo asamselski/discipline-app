@@ -1,29 +1,44 @@
-1. Zrzut Myśli (Brain Dump / Inbox)
-W RPM planowanie zaczyna się od "opróżnienia głowy" (Capture). Zanim przypiszesz zadaniu cel i powód, musisz wyrzucić z siebie wszystkie stresujące myśli i obowiązki.
+1. ZROBIONE! Zrzut Myśli (Brain Dump / Inbox)
+    W RPM planowanie zaczyna się od "opróżnienia głowy" (Capture). Zanim przypiszesz zadaniu cel i powód, musisz wyrzucić z siebie wszystkie stresujące myśli i obowiązki.
 
-Jak to wdrożyć: Dodanie prostej zakładki "Zrzut myśli" (Inbox), w której znajduje się tylko jedno pole tekstowe. Szybko wpisujesz tam wszystko, co zaprząta Ci głowę (np. "kupić karmę", "skończyć raport", "odpisać szefowi"). Dopiero w wolnej chwili klikasz na te luźne myśli i za pomocą kreatora zamieniasz je w pełnoprawne bloki RPM (Wynik -> Powód -> Plan Działania) lub odrzucasz.
+    Jak to wdrożyć: Dodanie prostej zakładki "Zrzut myśli" (Inbox), w której znajduje się tylko jedno pole tekstowe. Szybko wpisujesz tam wszystko, co zaprząta Ci głowę (np. "kupić karmę", "skończyć raport", "odpisać szefowi"). Dopiero w wolnej chwili klikasz na te luźne myśli i za pomocą kreatora zamieniasz je w pełnoprawne bloki RPM (Wynik -> Powód -> Plan Działania) lub odrzucasz.
 
 
 2. Priorytetyzacja MAP (Zasada 80/20)
-W kroku M (Massive Action Plan) Robbins zawsze podkreśla, że nie wszystkie zadania są równe. 20% działań przynosi 80% wyników. Obecnie Twoje zadania różnią się trudnością, ale nie "wagą" dla samego celu.
+    W kroku M (Massive Action Plan) Robbins zawsze podkreśla, że nie wszystkie zadania są równe. 20% działań przynosi 80% wyników. Obecnie Twoje zadania różnią się trudnością, ale nie "wagą" dla samego celu.
 
-Jak to wdrożyć: Dodanie przełącznika "⭐ Kluczowe działanie (Must-Do)" przy tworzeniu zadania. Takie zadania byłyby przypięte na samej górze listy "Dzisiaj", podświetlone mocnym kolorem (np. złotym) i dawałyby duży mnożnik punktów (PKT). Jeśli użytkownik wykona tylko to jedno zadanie z całego MAP, i tak wie, że pchnął cel mocno do przodu.
+    Jak to wdrożyć: Dodanie przełącznika "⭐ Kluczowe działanie (Must-Do)" przy tworzeniu zadania. Takie zadania byłyby przypięte na samej górze listy "Dzisiaj", podświetlone mocnym kolorem (np. złotym) i dawałyby duży mnożnik punktów (PKT). Jeśli użytkownik wykona tylko to jedno zadanie z całego MAP, i tak wie, że pchnął cel mocno do przodu.
 
 
 3. Obszary Zarządzania (Areas of Management) z tożsamością
-W Twojej aplikacji masz już wbudowane "Kategorie" (Zdrowie, Sport, Książka). W RPM nazywa się to "Areas of Management" (Obszary zarządzania życiem). Tony uczy, aby do każdego obszaru przypisać inspirującą tożsamość lub wizję.
+    W Twojej aplikacji masz już wbudowane "Kategorie" (Zdrowie, Sport, Książka). W RPM nazywa się to "Areas of Management" (Obszary zarządzania życiem). Tony uczy, aby do każdego obszaru przypisać inspirującą tożsamość lub wizję.
 
-Jak to wdrożyć: W widoku "Cele" moglibyśmy dodać u góry kafelki z Twoimi kategoriami. Po kliknięciu w "Zdrowie" użytkownik mógłby zdefiniować swoją Tożsamość/Wizję (np. "Jestem niepowstrzymanym wulkanem energii"). Ta wizja wyświetlałaby się zawsze jako nagłówek nad zadaniami z kategorii "Zdrowie", ciągle przypominając o ostatecznym powodzie dbania o ten obszar.
+    Jak to wdrożyć: W widoku "Cele" moglibyśmy dodać u góry kafelki z Twoimi kategoriami. Po kliknięciu w "Zdrowie" użytkownik mógłby zdefiniować swoją Tożsamość/Wizję (np. "Jestem niepowstrzymanym wulkanem energii"). Ta wizja wyświetlałaby się zawsze jako nagłówek nad zadaniami z kategorii "Zdrowie", ciągle przypominając o ostatecznym powodzie dbania o ten obszar.
 
 
-4. Tygodniowy Przegląd (Weekly Hour of Power)
-RPM to nie tylko planowanie dni, ale przede wszystkim sterowanie tygodniami. Żeby metoda działała, Robbins zaleca cotygodniową sesję kalibracji.
+4. ZROBIONE! Tygodniowy Przegląd (Weekly Hour of Power)
+    RPM to nie tylko planowanie dni, ale przede wszystkim sterowanie tygodniami. Żeby metoda działała, Robbins zaleca cotygodniową sesję kalibracji.
 
-Jak to wdrożyć: W niedzielę wieczorem (lub w zdefiniowanym w ustawieniach dniu) aplikacja mogłaby wyświetlać specjalny, pełnoekranowy modal (podobny do tego z trofeami). Zadałaby w nim 3 pytania:
+    Jak to wdrożyć: W niedzielę wieczorem (lub w zdefiniowanym w ustawieniach dniu) aplikacja mogłaby wyświetlać specjalny, pełnoekranowy modal (podobny do tego z trofeami). Zadałaby w nim 3 pytania:
 
-Co było moim największym sukcesem w tym tygodniu?
+    Co było moim największym sukcesem w tym tygodniu?
 
-Czego się nauczyłem?
+    Czego się nauczyłem?
 
-Jakie są moje 3 absolutnie kluczowe Wyniki (Results) na nadchodzący tydzień?
-Odpowiedzi zapisywałyby się w historii, budując niesamowity dziennik postępów.
+    Jakie są moje 3 absolutnie kluczowe Wyniki (Results) na nadchodzący tydzień?
+    Odpowiedzi zapisywałyby się w historii, budując niesamowity dziennik postępów.
+
+5. Mikrokroki (Podzadania)
+    Opór przed działaniem rośnie proporcjonalnie do wielkości zadania. Zadanie "Napisz raport" brzmi strasznie. Zadanie "Otwórz Worda i napisz nagłówek" jest banalnie proste.
+
+    Jak to wdrożyć: W edycji zadania dodaj możliwość wpisania szybkiej listy kroków (checklisty). W widoku zadania masz pasek postępu podzadania (np. 1/4 wykonane).
+
+    Dlaczego to działa: Zgodnie z "Zasadą 2 minut", jeśli zaczniesz robić pierwszą najmniejszą rzecz, pęd (momentum) sprawi, że dokończysz resztę.
+
+
+6. Cmentarzysko Wymówek (Dziennik Porażek)
+    Masz już czerwone ramki dla zadań po terminie. Pójdźmy krok dalej. Jeśli zadanie wisi niezrealizowane przez 3 dni i decydujesz się je usunąć (bo wiesz, że już go nie zrobisz), aplikacja nie pozwala Ci go tak po prostu skasować.
+
+    Jak to wdrożyć: Przy próbie usunięcia zaległego zadania wyskakuje okienko: "Dlaczego odpuszczasz?". Musisz wpisać powód (np. "Za mało spałem", "Złe planowanie", "Zwykłe lenistwo"). Zapisuje się to w specjalnej zakładce w Historii.
+
+    Dlaczego to działa: Bolesna szczerość z samym sobą. Kiedy po miesiącu spojrzysz na listę i zobaczysz, że 15 razy wpisałeś "zmęczenie", od razu wiesz, że Twoim głównym problemem nie jest brak czasu, tylko zła higiena snu.

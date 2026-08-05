@@ -332,6 +332,9 @@ export default function App() {
   const [readingData, setReadingData] = useState({ goalId: '', manualTitle: '', type: 'read_book', amount: '', optionalPages: '' });
 
   const [selectedSportWorkouts, setSelectedSportWorkouts] = useState({});
+  const [multiWorkoutStep, setMultiWorkoutStep] = useState(1); // <--- TĘ LINIJKĘ DODAJEMY
+
+  // --- STANY DLA TYGODNIOWEGO PRZEGLĄDU ---
 
   // --- STANY DLA TYGODNIOWEGO PRZEGLĄDU ---
   const [showWeeklyReviewModal, setShowWeeklyReviewModal] = useState(false);
@@ -424,6 +427,206 @@ export default function App() {
     
   const [selectedDate, setSelectedDate] = useState(() => getAppDayString());
 
+  // --- KONFIGURACJA GOOGLE DRIVE ---
+  // TUTAJ WKLEJ SWOJE KLUCZE Z GOOGLE CLOUD CONSOLE:
+  const GOOGLE_CLIENT_ID = '1065272600761-8cjv8obavqf468prr1s2d1ohf6pqs0ct.apps.googleusercontent.com';
+  const GOOGLE_API_KEY = 'AIzaSyBTMFNlayVBxJYOnhHFBEPonOWlyKxQc3w';
+  const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+  const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+  const [isGoogleAuthorized, setIsGoogleAuthorized] = useState(false);
+  const [googleBackupStatus, setGoogleBackupStatus] = useState('');
+  const tokenClientRef = useRef(null);
+
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState(false); // <--- do restartu aplikacji
+
+  // Inicjalizacja Google API
+// Inicjalizacja Google API (Odporna na wolniejsze telefony)
+  useEffect(() => {
+    let retryCount = 0;
+
+    const initGapiClient = async () => {
+      try {
+        await window.gapi.client.init({
+          apiKey: GOOGLE_API_KEY,
+          discoveryDocs: [DISCOVERY_DOC],
+        });
+      } catch (err) {
+        console.error('Błąd GAPI:', err);
+      }
+    };
+
+    const tryInitGoogle = () => {
+      // Upewniamy się, że wszystkie wtyczki z pliku Google są pobrane i gotowe
+      if (window.gapi && window.google && window.google.accounts && window.google.accounts.oauth2) {
+        window.gapi.load('client', initGapiClient);
+        tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: SCOPES,
+          callback: (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+              setIsGoogleAuthorized(true);
+            }
+          },
+        });
+      } else if (retryCount < 20) {
+        // Jeśli nie są gotowe, próbujemy ponownie (max 20 razy, czyli 10 sekund)
+        retryCount++;
+        setTimeout(tryInitGoogle, 500); 
+      }
+    };
+
+    const loadScript = (src) => {
+      return new Promise((resolve, reject) => {
+        if (document.querySelector(`script[src="${src}"]`)) {
+          resolve();
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.defer = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    };
+
+    Promise.all([
+      loadScript('https://apis.google.com/js/api.js'),
+      loadScript('https://accounts.google.com/gsi/client')
+    ]).then(() => {
+      tryInitGoogle(); // Uruchamia naszą cierpliwą pętlę
+    }).catch(err => {
+      console.error('Nie udało się załadować skryptów Google.', err);
+    });
+
+  }, []);
+
+  const handleAuthClick = () => {
+    if (tokenClientRef.current) {
+      tokenClientRef.current.requestAccessToken({ prompt: '' });
+    } else {
+      alert('Czekam na połączenie z Google... Jeśli używasz wolnego internetu, poczekaj jeszcze chwilę i spróbuj ponownie.');
+    }
+  };
+  const handleSignoutClick = () => {
+    const token = window.gapi.client.getToken();
+    if (token !== null) {
+      window.google.accounts.oauth2.revoke(token.access_token, () => {
+        window.gapi.client.setToken('');
+        setIsGoogleAuthorized(false);
+      });
+    }
+  };
+
+  const backupToGoogleDrive = async () => {
+    setGoogleBackupStatus('Tworzenie kopii...');
+    try {
+      // 1. Zbieramy wszystkie dane z aplikacji
+      const backupData = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith('discipline_')) {
+          backupData[key] = localStorage.getItem(key);
+        }
+      }
+      
+      const fileContent = JSON.stringify(backupData);
+      const fileMetadata = {
+        name: 'discipline_app_backup.json',
+        mimeType: 'application/json'
+      };
+
+      // 2. Budujemy zapytanie Multipart (aby wgrać plik z zawartością)
+      const boundary = '-------314159265358979323846';
+      const delimiter = "\r\n--" + boundary + "\r\n";
+      const close_delim = "\r\n--" + boundary + "--";
+      
+      const multipartRequestBody =
+        delimiter +
+        'Content-Type: application/json\r\n\r\n' +
+        JSON.stringify(fileMetadata) +
+        delimiter +
+        'Content-Type: application/json\r\n\r\n' +
+        fileContent +
+        close_delim;
+
+      await window.gapi.client.request({
+        path: '/upload/drive/v3/files',
+        method: 'POST',
+        params: { uploadType: 'multipart' },
+        headers: { 'Content-Type': 'multipart/related; boundary="' + boundary + '"' },
+        body: multipartRequestBody
+      });
+
+      setGoogleBackupStatus('✅ Sukces! Zapisano na Dysku Google.');
+      setTimeout(() => setGoogleBackupStatus(''), 3000);
+    } catch (err) {
+      console.error(err);
+      setGoogleBackupStatus('❌ Błąd podczas zapisu.');
+    }
+  };
+
+  // --- FUNKCJA RESETU APLIKACJI ---
+  const executeFactoryReset = () => {
+    const keysToRemove = [];
+    // Szukamy wszystkich kluczy w przeglądarce zaczynających się od 'discipline_'
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('discipline_')) {
+        keysToRemove.push(key);
+      }
+    }
+    // Usuwamy je
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    // Przeładowujemy stronę (aplikacja uruchomi się z pustymi danymi)
+    window.location.reload();
+  };
+  // ----------------------------------------------
+
+  const restoreFromGoogleDrive = async () => {
+    setGoogleBackupStatus('Szukanie kopii...');
+    try {
+      // Szukamy pliku na dysku
+      const response = await window.gapi.client.drive.files.list({
+        q: "name='discipline_app_backup.json' and trashed=false",
+        spaces: 'drive',
+        fields: 'files(id, name)',
+        orderBy: 'createdTime desc'
+      });
+
+      const files = response.result.files;
+      if (!files || files.length === 0) {
+        setGoogleBackupStatus('❌ Nie znaleziono pliku kopii zapasowej.');
+        return;
+      }
+
+      setGoogleBackupStatus('Pobieranie danych...');
+      const fileId = files[0].id;
+      
+      const fileData = await window.gapi.client.drive.files.get({
+        fileId: fileId,
+        alt: 'media'
+      });
+
+      const restoredData = typeof fileData.result === 'string' ? JSON.parse(fileData.result) : fileData.result;
+      
+      // Nadpisujemy localStorage
+      Object.keys(restoredData).forEach(key => {
+        localStorage.setItem(key, restoredData[key]);
+      });
+
+      setGoogleBackupStatus('✅ Sukces! Odświeżanie...');
+      setTimeout(() => window.location.reload(), 1000); // Przeładowujemy, aby wczytać stany
+
+    } catch (err) {
+      console.error(err);
+      setGoogleBackupStatus('❌ Błąd podczas pobierania.');
+    }
+  };
+  // ----------------------------------------------
+
   const [lastCheckedLevel, setLastCheckedLevel] = useState(() => {
     const saved = localStorage.getItem('discipline_last_checked_level');
     return saved ? parseInt(saved, 10) : 1;
@@ -508,6 +711,44 @@ export default function App() {
   useEffect(() => localStorage.setItem('discipline_workouts', JSON.stringify(workouts)), [workouts]);
   useEffect(() => localStorage.setItem('discipline_goals', JSON.stringify(goals)), [goals]);
   useEffect(() => localStorage.setItem('discipline_notes', JSON.stringify(notes)), [notes]);
+
+// --- STANY DLA BIBLIOTEKI KSIĄŻEK ---
+  const [books, setBooks] = useState(() => {
+    const saved = localStorage.getItem('discipline_books');
+    return saved ? JSON.parse(saved) : [];
+  });
+  useEffect(() => localStorage.setItem('discipline_books', JSON.stringify(books)), [books]);
+
+  const [showBooksModal, setShowBooksModal] = useState(false);
+  const [showAddBookModal, setShowAddBookModal] = useState(false);
+  const [newBookData, setNewBookData] = useState({ title: '', totalPages: '', status: 'planned' });
+
+  const handleAddBook = (e) => {
+    e.preventDefault();
+    if (!newBookData.title.trim()) return;
+    const newBook = {
+      id: Date.now(),
+      title: newBookData.title.trim(),
+      totalPages: parseInt(newBookData.totalPages) || null,
+      status: newBookData.status,
+      createdAt: todayStr
+    };
+    setBooks([newBook, ...books]);
+    setNewBookData({ title: '', totalPages: '', status: 'planned' });
+    setShowAddBookModal(false);
+  };
+
+  const changeBookStatus = (id, status) => {
+    setBooks(books.map(b => b.id === id ? { ...b, status } : b));
+  };
+
+  const deleteBook = (id) => {
+    if (window.confirm('Czy na pewno chcesz usunąć tę książkę z biblioteki?')) {
+      setBooks(books.filter(b => b.id !== id));
+    }
+  };
+  // -----------------------------------------------------------
+
 
   // LOGIKA STOPERÓW ODPORNA NA ZABLOKOWANY EKRAN (oparta na Date.now())
   useEffect(() => {
@@ -2095,7 +2336,7 @@ const handleWizardNext = () => {
                 <button onClick={() => { setFormErrors({}); setShowAddTaskModal(true); setIsFabOpen(false); }} className={'bg-emerald-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
                   <CheckSquare className="w-4 h-4" /> Dodaj zadanie
                 </button>
-                <button onClick={() => { setFormErrors({}); setSelectedSportWorkouts({}); setShowAddWorkoutModal(true); setIsFabOpen(false); }} className={'bg-orange-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
+                <button onClick={() => { setFormErrors({}); setSelectedSportWorkouts({}); setMultiWorkoutStep(1); setShowAddWorkoutModal(true); setIsFabOpen(false); }} className={'bg-orange-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
                   <Dumbbell className="w-4 h-4" /> Dodaj trening
                 </button>
                 <button onClick={() => { setFormErrors({}); setShowAddReadingModal(true); setIsFabOpen(false); }} className={'bg-sky-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
@@ -2121,15 +2362,17 @@ const handleWizardNext = () => {
               <p className={currentFontConfig.smallClass + ' md:text-base ' + tStyle.subText}>Globalne centrum zarządzania celami oraz zadaniami</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => setShowBooksModal(true)} className={'bg-sky-500 hover:bg-sky-400 transition-colors text-slate-950 font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg ' + currentFontConfig.smallClass}>
+                <BookOpen className="w-4 h-4" /> Moje książki
+              </button>
               <button onClick={openGoalWizard} className={'bg-amber-500 hover:bg-amber-400 transition-colors text-slate-950 font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg ' + currentFontConfig.smallClass}>
                 <Target className="w-4 h-4" /> + Cel
               </button>
               <button onClick={() => setShowWeeklyReviewModal(true)} className={'bg-violet-500 hover:bg-violet-400 transition-colors text-white font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg ' + currentFontConfig.smallClass}>
                 <Sparkles className="w-4 h-4" /> Przegląd
               </button>
-
             </div>
-          </header>
+          </header> 
 
           <div className="mb-8">
             <div className="space-y-4 col-span-full">
@@ -2579,7 +2822,7 @@ const handleWizardNext = () => {
                 <div>
                   <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
                     {(() => {
-                      if (wizardData.categoryKey === 'book') return 'Tytuł książki (np. "Wiedźmin: Ostatnie Życzenie")';
+                      if (wizardData.categoryKey === 'book') return 'Wybierz z biblioteki lub wpisz tytuł ręcznie';
                       if (wizardData.categoryKey === 'sport') return 'Cel sportowy (np. "Bieg dookoła jeziora")';
                       if (wizardData.categoryKey === 'study') return 'Czego się uczysz? (np. "Podstawy Pythona")';
                       if (wizardData.categoryKey === 'health') {
@@ -2590,6 +2833,29 @@ const handleWizardNext = () => {
                       return 'Nazwa projektu / celu (np. "Nowa aplikacja")';
                     })()}
                   </label>
+
+                  {wizardData.categoryKey === 'book' && books.length > 0 && (
+                     <select
+                       className={`w-full rounded-2xl px-4 py-3 mb-3 ${currentFontConfig.sizeClass} focus:outline-none focus:border-amber-500 border border-slate-500/20 ${tStyle.inputBg}`}
+                       onChange={(e) => {
+                          const bId = e.target.value;
+                          if(bId) {
+                             const b = books.find(x => x.id.toString() === bId);
+                             if(b) {
+                                setWizardData({...wizardData, title: b.title, bookTotalPages: b.totalPages ? String(b.totalPages) : ''});
+                                clearError('wizardTitle');
+                                if (b.status === 'planned') changeBookStatus(b.id, 'in_progress'); // Automatycznie oznacza jako czytaną
+                             }
+                          }
+                       }}
+                     >
+                        <option value="">-- Wybierz z Moich Książek --</option>
+                        {books.filter(b => b.status !== 'read').map(b => (
+                           <option key={b.id} value={b.id}>{b.title}</option>
+                        ))}
+                     </select>
+                  )}
+
                   <input 
                     type="text" 
                     value={wizardData.title} 
@@ -3022,8 +3288,47 @@ const handleWizardNext = () => {
                 className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} 
               />
             </div>
+            
+            <div className="pt-4 border-t border-slate-500/20">
+              <label className={currentFontConfig.smallClass + ' md:text-sm font-medium flex items-center gap-2 mb-3 ' + tStyle.subText}>
+                <Laptop className="w-4 h-4 text-emerald-500" /> Kopia zapasowa (Google Drive)
+              </label>
+              
+              {!isGoogleAuthorized ? (
+                <button onClick={handleAuthClick} className="w-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white py-3 rounded-2xl border border-slate-300 dark:border-slate-600 font-bold transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-sm">
+                   Zaloguj z Google
+                </button>
+              ) : (
+                <div className="space-y-3">
+                   <div className="flex gap-2">
+                     <button onClick={backupToGoogleDrive} className="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-900 py-3 rounded-2xl font-bold transition-transform active:scale-95 flex flex-col items-center justify-center gap-1 shadow-md">
+                        Zrób Kopię
+                     </button>
+                     <button onClick={restoreFromGoogleDrive} className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-900 py-3 rounded-2xl font-bold transition-transform active:scale-95 flex flex-col items-center justify-center gap-1 shadow-md">
+                        Przywróć
+                     </button>
+                   </div>
+                   
+                   {googleBackupStatus && (
+                      <div className="text-center font-bold text-sm text-emerald-500 bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
+                         {googleBackupStatus}
+                      </div>
+                   )}
+                   
+                   <button onClick={handleSignoutClick} className="w-full text-xs font-bold text-red-500 py-2 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors">
+                      Wyloguj konto Google
+                   </button>
+                </div>
+              )}
+            </div>
 
-            <button onClick={() => setShowSettingsModal(false)} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3.5 rounded-2xl font-bold transition-transform active:scale-95 shadow-lg shadow-emerald-500/20">Zamknij ustawienia</button>
+            <div className="pt-4 border-t border-slate-500/20">
+              <button onClick={() => setShowResetConfirmModal(true)} className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 py-3 rounded-2xl font-bold transition-transform active:scale-95 flex items-center justify-center gap-2">
+                 <AlertTriangle className="w-5 h-5" /> Wyczyść wszystkie dane (Reset)
+              </button>
+            </div>
+
+            <button onClick={() => setShowSettingsModal(false)} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3.5 rounded-2xl font-bold transition-transform active:scale-95 shadow-lg shadow-emerald-500/20 mt-2">Zamknij ustawienia</button>
           </div>
         </div>
       )}
@@ -3197,52 +3502,78 @@ const handleWizardNext = () => {
         </div>
       )}
 
-      {showAddWorkoutModal && (
+{showAddWorkoutModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className={'w-full max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
-            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 flex items-center gap-2 text-orange-500'}><Dumbbell className="w-5 h-5"/> Zarejestruj multitrening</h3>
-            <p className={currentFontConfig.smallClass + ' mb-4 ' + tStyle.subText}>Zaznacz opcje, które dzisiaj wykonałeś i podaj ich wartości. Zostaną zsumowane do statystyk.</p>
-            <form onSubmit={handleMultiWorkoutSubmit} className="space-y-5">
-              
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                 {GOAL_CATEGORIES_CONFIG.sport.types.map(t => {
-                    const isActive = selectedSportWorkouts[t.id] !== undefined;
-                    return (
-                       <div key={t.id} className={'p-3 rounded-2xl border transition-all ' + (isActive ? 'bg-orange-500/10 border-orange-500/40 ring-1 ring-orange-500/50 shadow-md' : 'bg-slate-500/10 border-transparent hover:bg-slate-500/20')}>
-                          <label className="flex items-center gap-2 cursor-pointer mb-2 h-full">
-                             <input type="checkbox" checked={isActive} onChange={() => {
-                                 if(isActive) { const n = {...selectedSportWorkouts}; delete n[t.id]; setSelectedSportWorkouts(n); }
-                                 else { setSelectedSportWorkouts({...selectedSportWorkouts, [t.id]: ''}) }
-                             }} className="accent-orange-500 w-4 h-4 cursor-pointer" />
-                             <span className={currentFontConfig.smallClass + ' font-bold leading-tight ' + tStyle.titleText}>{t.label.split(' (')[0]}</span>
-                          </label>
-                          {isActive && (
-                             <input type="number" step="any" autoFocus placeholder={t.label.match(/\((.*?)\)/)?.[1] || 'wartość'} value={selectedSportWorkouts[t.id]} onChange={e => setSelectedSportWorkouts({...selectedSportWorkouts, [t.id]: e.target.value})} className={'w-full py-2 px-3 rounded-xl font-bold text-center border focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none ' + tStyle.inputBg} />
-                          )}
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-500/20">
+              <h3 className={currentFontConfig.sizeClass + ' font-bold flex items-center gap-2 text-orange-500'}>
+                <Dumbbell className="w-5 h-5"/> Zarejestruj multitrening {multiWorkoutStep === 1 ? '(1/2)' : '(2/2)'}
+              </h3>
+              <button onClick={() => setShowAddWorkoutModal(false)} className={'p-1.5 rounded-full hover:bg-slate-500/20 transition-colors'}><X className="w-5 h-5"/></button>
+            </div>
+            
+            {multiWorkoutStep === 1 ? (
+              <div className="space-y-5 animate-fadeIn">
+                <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}><strong>Krok 1:</strong> Zaznacz wszystkie aktywności, które dzisiaj wykonałeś.</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                   {GOAL_CATEGORIES_CONFIG.sport.types.map(t => {
+                      const isActive = selectedSportWorkouts[t.id] !== undefined;
+                      return (
+                         <div 
+                           key={t.id} 
+                           onClick={() => {
+                               if(isActive) { const n = {...selectedSportWorkouts}; delete n[t.id]; setSelectedSportWorkouts(n); }
+                               else { setSelectedSportWorkouts({...selectedSportWorkouts, [t.id]: ''}) }
+                           }} 
+                           className={'p-4 rounded-2xl border transition-all cursor-pointer text-center flex flex-col items-center justify-center min-h-[100px] ' + (isActive ? 'bg-orange-500/10 border-orange-500 text-orange-500 ring-2 ring-orange-500/50 shadow-md scale-[1.02]' : 'bg-slate-500/5 border-slate-500/20 hover:bg-slate-500/10')}
+                         >
+                            <div className={"transition-all duration-300 " + (isActive ? 'drop-shadow-lg' : 'grayscale opacity-50')}>
+                                {getTypeIcon(t.id)}
+                            </div>
+                            <span className={currentFontConfig.smallClass + ' font-bold leading-tight ' + (isActive ? 'text-orange-500' : tStyle.titleText)}>{t.label.split(' (')[0]}</span>
+                         </div>
+                      )
+                   })}
+                </div>
+                <div className="flex gap-3 pt-4 border-t border-slate-500/20">
+                  <button type="button" onClick={() => setShowAddWorkoutModal(false)} className={'flex-1 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
+                  <button type="button" disabled={Object.keys(selectedSportWorkouts).length === 0} onClick={() => setMultiWorkoutStep(2)} className={'flex-1 bg-orange-500 hover:bg-orange-400 text-slate-950 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold disabled:opacity-50 disabled:active:scale-100 shadow-lg shadow-orange-500/20'}>Dalej</button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleMultiWorkoutSubmit} className="space-y-5 animate-fadeIn">
+                <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}><strong>Krok 2:</strong> Wpisz dokładne wartości dla zaznaczonych aktywności.</p>
+                <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-2 pb-2">
+                   {GOAL_CATEGORIES_CONFIG.sport.types.filter(t => selectedSportWorkouts[t.id] !== undefined).map((t, idx) => (
+                       <div key={t.id} className={'p-4 rounded-2xl border bg-orange-500/5 border-orange-500/30 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 animate-fadeIn'}>
+                           <span className={currentFontConfig.sizeClass + ' font-bold ' + tStyle.titleText}>🔥 {t.label.split(' (')[0]}</span>
+                           <div className="relative w-full md:w-1/2">
+                             <input type="number" step="any" autoFocus={idx === 0} placeholder="0" value={selectedSportWorkouts[t.id]} onChange={e => setSelectedSportWorkouts({...selectedSportWorkouts, [t.id]: e.target.value})} className={'w-full py-3 px-4 pr-16 rounded-xl font-bold text-center border focus:border-orange-500 focus:ring-2 focus:ring-orange-500 outline-none ' + tStyle.inputBg} />
+                             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold opacity-50 uppercase">{t.label.match(/\((.*?)\)/)?.[1] || ''}</span>
+                           </div>
                        </div>
-                    )
-                 })}
-              </div>
+                   ))}
+                </div>
 
-              <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-2 ' + tStyle.subText}>Powiąż z celem sportowym (opcjonalnie)</label>
-                <select value={newWorkoutGoalId} onChange={(e) => setNewWorkoutGoalId(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-orange-500 ' + tStyle.inputBg}>
-                  <option value="">-- Brak powiązania --</option>
-                  {goals.filter(g => g.category === 'Sport' || g.category === 'Zdrowie').map(g => (
-                    <option key={g.id} value={g.id}>{g.title}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="flex gap-3 pt-4 border-t border-slate-500/20">
-                <button type="button" onClick={() => setShowAddWorkoutModal(false)} className={'flex-1 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
-                <button type="submit" className={'flex-1 bg-orange-500 hover:bg-orange-400 text-slate-950 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>Zapisz zestaw</button>
-              </div>
-            </form>
+                <div>
+                  <label className={currentFontConfig.smallClass + ' font-medium block mb-2 ' + tStyle.subText}>Powiąż z celem sportowym (opcjonalnie)</label>
+                  <select value={newWorkoutGoalId} onChange={(e) => setNewWorkoutGoalId(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-orange-500 ' + tStyle.inputBg}>
+                    <option value="">-- Brak powiązania --</option>
+                    {goals.filter(g => g.category === 'Sport' || g.category === 'Zdrowie').map(g => (
+                      <option key={g.id} value={g.id}>{g.title}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="flex gap-3 pt-4 border-t border-slate-500/20">
+                  <button type="button" onClick={() => setMultiWorkoutStep(1)} className={'flex-1 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Wstecz</button>
+                  <button type="submit" className={'flex-1 bg-orange-500 hover:bg-orange-400 text-slate-950 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold shadow-lg shadow-orange-500/20'}>Zapisz zestaw</button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
-
       {showAddReadingModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
@@ -3794,7 +4125,127 @@ const handleWizardNext = () => {
         </div>
       )}
 
+          {showBooksModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[150] overflow-y-auto animate-fadeIn">
+          <div className={'w-full max-w-2xl max-h-[85vh] flex flex-col rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
+            <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-500/20">
+              <div className="flex items-center gap-3">
+                 <div className="w-12 h-12 bg-sky-500/20 text-sky-500 flex items-center justify-center rounded-xl border border-sky-500/40">
+                     <BookOpen className="w-6 h-6" />
+                 </div>
+                 <div>
+                    <h3 className={currentFontConfig.sizeClass + ' font-bold text-sky-500'}>Moja Biblioteka</h3>
+                    <p className="text-xs opacity-70">Zarządzaj swoimi lekturami</p>
+                 </div>
+              </div>
+              <button onClick={() => setShowBooksModal(false)} className={'p-2 rounded-full transition-colors ' + tStyle.modalBtnBg}><X className="w-5 h-5" /></button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+               {['in_progress', 'planned', 'read'].map(statusGroup => {
+                  const groupBooks = books.filter(b => b.status === statusGroup);
+                  if (groupBooks.length === 0 && statusGroup !== 'in_progress') return null;
+                  
+                  const groupTitle = statusGroup === 'in_progress' ? '📖 W trakcie czytania' : statusGroup === 'planned' ? '📚 W planach' : '✅ Przeczytane';
+                  const groupColor = statusGroup === 'in_progress' ? 'text-sky-500' : statusGroup === 'planned' ? 'text-amber-500' : 'text-emerald-500';
 
+                  return (
+                     <div key={statusGroup}>
+                        <h4 className={'font-bold uppercase tracking-wider mb-3 flex items-center gap-2 ' + currentFontConfig.smallClass + ' ' + groupColor}>
+                           {groupTitle} ({groupBooks.length})
+                        </h4>
+                        
+                        {groupBooks.length === 0 && statusGroup === 'in_progress' ? (
+                           <p className="text-sm opacity-50 italic">Brak książek w trakcie czytania.</p>
+                        ) : (
+                           <div className="space-y-2">
+                              {groupBooks.map(b => (
+                                 <div key={b.id} className={'p-4 rounded-2xl border bg-slate-500/5 border-slate-500/20 shadow-sm flex items-center justify-between gap-3 transition-all'}>
+                                    <div>
+                                       <p className={'font-bold ' + tStyle.titleText + (b.status === 'read' ? ' line-through opacity-70' : '')}>{b.title}</p>
+                                       {b.totalPages && <p className="text-xs font-mono opacity-60">Stron: {b.totalPages}</p>}
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                       {b.status !== 'in_progress' && b.status !== 'read' && (
+                                          <button onClick={() => changeBookStatus(b.id, 'in_progress')} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-500 p-2 rounded-xl transition-colors text-xs font-bold" title="Rozpocznij czytanie"><Play className="w-4 h-4"/></button>
+                                       )}
+                                       {b.status !== 'read' && (
+                                          <button onClick={() => changeBookStatus(b.id, 'read')} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 p-2 rounded-xl transition-colors text-xs font-bold" title="Oznacz jako przeczytane"><Check className="w-4 h-4"/></button>
+                                       )}
+                                       <button onClick={() => deleteBook(b.id)} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 p-2 rounded-xl transition-colors" title="Usuń"><Trash2 className="w-4 h-4"/></button>
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        )}
+                     </div>
+                  );
+               })}
+            </div>
+            
+            <div className="pt-4 border-t border-slate-500/20 mt-2">
+               <button onClick={() => setShowAddBookModal(true)} className="w-full bg-sky-500 hover:bg-sky-400 text-slate-900 font-bold py-3.5 rounded-2xl shadow-lg shadow-sky-500/20 transition-transform active:scale-95 flex items-center justify-center gap-2">
+                   <Plus className="w-5 h-5" /> Dodaj nową książkę
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddBookModal && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 z-[160] animate-fadeIn">
+          <div className={'w-full max-w-sm rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
+             <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 text-sky-500 flex items-center gap-2'}><BookOpen className="w-5 h-5" /> Nowa Książka</h3>
+             <form onSubmit={handleAddBook} className="space-y-4">
+                 <div>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Tytuł książki</label>
+                    <input autoFocus type="text" placeholder="Wpisz tytuł..." value={newBookData.title} onChange={e => setNewBookData({...newBookData, title: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 ' + tStyle.inputBg} />
+                 </div>
+                 <div>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Ilość stron (Opcjonalnie)</label>
+                    <input type="number" placeholder="np. 350" value={newBookData.totalPages} onChange={e => setNewBookData({...newBookData, totalPages: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 ' + tStyle.inputBg} />
+                 </div>
+                 <div>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Status</label>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => setNewBookData({...newBookData, status: 'planned'})} className={'py-2.5 rounded-xl font-bold transition-colors text-xs ' + (newBookData.status === 'planned' ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20')}>W planach</button>
+                        <button type="button" onClick={() => setNewBookData({...newBookData, status: 'in_progress'})} className={'py-2.5 rounded-xl font-bold transition-colors text-xs ' + (newBookData.status === 'in_progress' ? 'bg-sky-500 text-slate-900 shadow-md' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20')}>Od razu czytam</button>
+                    </div>
+                 </div>
+                 <div className="flex gap-3 pt-4 mt-2 border-t border-slate-500/20">
+                    <button type="button" onClick={() => setShowAddBookModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
+                    <button type="submit" className={'flex-1 bg-sky-500 hover:bg-sky-400 text-slate-900 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold shadow-lg shadow-sky-500/20'}>Zapisz</button>
+                 </div>
+             </form>
+          </div>
+        </div>
+      )}
+
+          {showResetConfirmModal && (
+            <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 z-[500] animate-fadeIn">
+              <div className={'w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center border border-red-500/40 ' + tStyle.modalBg}>
+                <div className="w-16 h-16 bg-red-500/20 border border-red-500/40 rounded-full flex items-center justify-center mx-auto mb-5 text-red-500 shadow-inner">
+                  <AlertTriangle className="w-8 h-8" />
+                </div>
+                <h3 className={currentFontConfig.sizeClass + ' font-bold mb-2 text-red-500'}>Ostrzeżenie Krytyczne</h3>
+                <p className={currentFontConfig.smallClass + ' mb-6 opacity-80 ' + tStyle.titleText}>
+                  Czy na pewno chcesz <strong>bezpowrotnie usunąć</strong> wszystkie swoje cele, zadania, historię i zdobyte trofea? 
+                  <br/><br/>
+                  Ta operacja całkowicie wyzeruje Twoją aplikację.
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowResetConfirmModal(false)} className={'flex-1 py-3 rounded-2xl font-semibold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>
+                    Anuluj
+                  </button>
+                  <button onClick={executeFactoryReset} className={'flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' shadow-lg shadow-red-500/30'}>
+                    Tak, kasuj wszystko
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+ 
 
     </div>
   );

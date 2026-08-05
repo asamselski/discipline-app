@@ -1,0 +1,12 @@
+
+API Google
+
+AIzaSyBTMFNlayVBxJYOnhHFBEPonOWlyKxQc3w
+
+
+
+Identyfikator klienta (CLIENT SECRET):
+1065272600761-8cjv8obavqf468prr1s2d1ohf6pqs0ct.apps.googleusercontent.com
+
+Tajny klucz klienta OAuth API:
+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

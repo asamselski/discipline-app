@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { getCoachMessage, getYesterdayReview } from './motivationEngine';
 import { QUOTES } from './data/quotes';
 import { 
-  CheckCircle2, Circle, Plus, Trophy, Zap, 
+  History, CheckCircle2, Circle, Plus, Trophy, Zap, 
   Trash2, Calendar as CalendarIcon, Check, Play, Pause, Quote, X, User, Settings, ShieldCheck, Sun, Moon, Sparkles, Flame, MessageSquare, AlertTriangle, Edit3, Target, Activity, Dumbbell, Footprints, Utensils, Brain, ChevronDown, Bell, Laptop, BookOpen, Archive, RotateCcw,
   ChevronLeft, ChevronRight, PieChart, CheckSquare, Type, Clock,
   Award, Share2, Lock, MoreVertical
@@ -231,6 +232,66 @@ export default function App() {
     return INITIAL_CATEGORIES;
   });
 
+
+// --- STANY I FUNKCJA DLA RAPORTU Z WCZORAJ ---
+  const [showYesterdayModal, setShowYesterdayModal] = useState(false);
+  const [yesterdayReportMessage, setYesterdayReportMessage] = useState('');
+  const [yesterdayCalculatedStats, setYesterdayCalculatedStats] = useState(null);
+
+  const handleOpenYesterdayReport = () => {
+    // 1. Obliczamy wczorajszą datę
+    const yDate = parseLocalDate(todayStr);
+    yDate.setDate(yDate.getDate() - 1);
+    const yStr = formatDateStr(yDate);
+
+    let totalTasks = 0; let doneTasks = 0;
+    let healthTotal = 0; let healthDone = 0;
+    let points = 0;
+
+    // 2. Filtrujemy i sprawdzamy zadania z wczoraj
+    tasks.forEach(t => {
+      const applies = (t.repeat && t.repeat !== 'once') 
+        ? taskAppliesToDate(t, yStr) 
+        : (t.dueDate === yStr || t.completedAt === yStr || (!t.isCompleted && t.dueDate < yStr));
+
+      if (applies) {
+        totalTasks++;
+        const isHealth = t.category === 'Zdrowie' || t.category === 'Sport';
+        if (isHealth) healthTotal++;
+
+        let actuallyDone = false;
+        if (t.repeat && t.repeat !== 'once') {
+          actuallyDone = Boolean(t.completedDates && t.completedDates[yStr]);
+        } else {
+          actuallyDone = Boolean(t.isCompleted && (t.completedAt === yStr || t.dueDate <= yStr));
+        }
+
+        if (actuallyDone) {
+          doneTasks++;
+          if (isHealth) healthDone++;
+          points += (t.pkt || 20) + (checkStreakBonus(t.id, yStr) ? 10 : 0);
+        }
+      }
+    });
+
+    // 3. Dodajemy Aktywności/Treningi z wczoraj
+    workouts.filter(w => w.date === yStr).forEach(w => {
+      points += (w.pkt || 0);
+      const isSport = ['run', 'bike', 'walk_km', 'pushups', 'pullups', 'squats', 'situps', 'gym', 'steps', 'no_sweets'].includes(w.type);
+      if (isSport) {
+        healthTotal++;
+        healthDone++;
+      }
+    });
+
+    const finalStats = { points, totalTasks, doneTasks, healthDone, healthTotal };
+    
+    // Zapisujemy prawdziwe dane i odpalamy trenera
+    setYesterdayCalculatedStats(finalStats);
+    setYesterdayReportMessage(getYesterdayReview(finalStats));
+    setShowYesterdayModal(true);
+  };
+
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showTrophiesModal, setShowTrophiesModal] = useState(false);
@@ -429,8 +490,8 @@ export default function App() {
 
   // --- KONFIGURACJA GOOGLE DRIVE ---
   // TUTAJ WKLEJ SWOJE KLUCZE Z GOOGLE CLOUD CONSOLE:
-  const GOOGLE_CLIENT_ID = '1065272600761-8cjv8obavqf468prr1s2d1ohf6pqs0ct.apps.googleusercontent.com';
-  const GOOGLE_API_KEY = 'AIzaSyBTMFNlayVBxJYOnhHFBEPonOWlyKxQc3w';
+  const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
   const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
   const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
@@ -2032,7 +2093,11 @@ const handleWizardNext = () => {
               <h1 className={currentFontConfig.headerClass + ' font-bold tracking-tight ' + tStyle.titleText}>Cześć, {userName}! 👋</h1>
               <p className={currentFontConfig.smallClass + ' md:text-base ' + tStyle.subText}>Dyscyplina buduje wolność</p>
             </div>
-            <div className="flex items-center gap-2">
+
+          <  div className="flex items-center gap-2">
+              <button onClick={handleOpenYesterdayReport} className={'p-3 md:p-3.5 rounded-full border text-blue-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title="Raport z wczoraj">
+                <History className="w-5 h-5 md:w-6 md:h-6" />
+              </button>
               <button onClick={() => setShowInboxListModal(true)} className={'relative p-3 md:p-3.5 rounded-full border text-violet-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title="Skrzynka odbiorcza (Zrzut myśli)">
                 <Archive className="w-5 h-5 md:w-6 md:h-6" />
                 {inbox.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border border-slate-900 animate-bounce">{inbox.length}</span>}
@@ -4245,7 +4310,70 @@ const handleWizardNext = () => {
               </div>
             </div>
           )}
- 
+        {/* ========================================= */}
+      {/* MODAL: RAPORT Z WCZORAJ                     */}
+      {/* ========================================= */}
+      {showYesterdayModal && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md rounded-[2rem] bg-slate-50 dark:bg-slate-900 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800">
+            
+            {/* Nagłówek */}
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900">
+              <h2 className="font-bold text-xl flex items-center gap-2 text-slate-800 dark:text-white">
+                <History className="w-6 h-6 text-blue-500" /> Wczoraj
+              </h2>
+              <button 
+                onClick={() => setShowYesterdayModal(false)} 
+                className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Treść */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              
+              {/* Sekcja liczbowych statystyk */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl text-center bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Punkty</p>
+                  <p className="text-3xl font-black text-emerald-500">{yesterdayCalculatedStats?.points || 0}</p>
+                </div>
+                <div className="p-4 rounded-2xl text-center bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Zadania</p>
+                  <p className="text-3xl font-black text-blue-500">{yesterdayCalculatedStats?.doneTasks || 0}<span className="text-lg text-slate-400">/{yesterdayCalculatedStats?.totalTasks || 0}</span></p>
+                </div>
+                <div className="col-span-2 p-4 rounded-2xl text-center bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Kategoria Zdrowie i Sport</p>
+                  <p className="text-xl font-bold text-amber-500">
+                     {yesterdayCalculatedStats?.healthDone || 0} na {yesterdayCalculatedStats?.healthTotal || 0} ukończone!
+                  </p>
+                </div>
+              </div>
+
+              {/* Opinia Trenera */}
+              <div className="p-5 rounded-2xl bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/30">
+                <div className="flex items-center gap-2 mb-3">
+                  <Flame className="w-5 h-5 text-blue-500" />
+                  <span className="font-bold text-sm text-blue-700 dark:text-blue-400">Opinia Trenera</span>
+                </div>
+                <p className="font-medium italic leading-relaxed text-slate-700 dark:text-slate-300">
+                  "{yesterdayReportMessage}"
+                </p>
+              </div>
+              
+              {/* Przycisk zamknięcia */}
+              <button 
+                onClick={() => setShowYesterdayModal(false)}
+                className="w-full py-4 rounded-2xl font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30 active:scale-95"
+              >
+                Przyjąłem do wiadomości
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

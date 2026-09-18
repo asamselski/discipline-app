@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getCoachMessage, getYesterdayReview } from './motivationEngine';
 import { QUOTES } from './data/quotes';
+import { getNotificationStatus, requestNotificationPermission, showAppNotification } from './notifications';
+import { createBackupDocument, downloadBackupDocument, restoreBackupDocument } from './appData';
+import { disablePushNotifications, enablePushNotifications, getPushApiUrl, getPushSubscriptionStatus, savePushApiUrl, syncPushReminders } from './pushNotifications';
 import { 
   History, CheckCircle2, Circle, Plus, Trophy, Zap, 
   Trash2, Calendar as CalendarIcon, Check, Play, Pause, Quote, X, User, Settings, ShieldCheck, Sun, Moon, Sparkles, Flame, MessageSquare, AlertTriangle, Edit3, Target, Activity, Dumbbell, Footprints, Utensils, Brain, ChevronDown, Bell, Laptop, BookOpen, Archive, RotateCcw,
   ChevronLeft, ChevronRight, PieChart, CheckSquare, Type, Clock,
-  Award, Share2, Lock, MoreVertical
+  Award, Share2, Lock, MoreVertical, Star, Download, Upload, Cloud, RefreshCw
 } from 'lucide-react';
 
 const parseLocalDate = (dateStr) => {
@@ -188,6 +191,10 @@ const isTaskDoneForDate = (t, dateStr) => {
 export default function App() {
   const [resetTime, setResetTime] = useState(() => localStorage.getItem('discipline_reset_time') || '00:00');
   const [todayStr, setTodayStr] = useState(() => getAppDayString());
+  const [notificationStatus, setNotificationStatus] = useState(() => getNotificationStatus());
+  const [pushStatus, setPushStatus] = useState('checking');
+  const [pushApiUrl, setPushApiUrl] = useState(() => getPushApiUrl());
+  const [pushMessage, setPushMessage] = useState('');
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -197,13 +204,55 @@ export default function App() {
     return () => clearInterval(interval);
   }, [todayStr, resetTime]);
 
-  // Globalne zapytanie o zgodę na powiadomienia przy pierwszym uruchomieniu
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+  const enableNotifications = async () => {
+    const status = await requestNotificationPermission();
+    setNotificationStatus(status);
+    return status;
+  };
+
+  const testNotification = async () => {
+    const status = notificationStatus === 'granted'
+      ? 'granted'
+      : await enableNotifications();
+
+    if (status === 'granted') {
+      await showAppNotification('Powiadomienia działają! ✅', {
+        body: 'SamoDyscyplina może wyświetlać przypomnienia na tym urządzeniu.',
+        tag: 'discipline-notification-test',
+      });
     }
+  };
+
+  useEffect(() => {
+    getPushSubscriptionStatus()
+      .then(setPushStatus)
+      .catch(() => setPushStatus('disabled'));
   }, []);
-  // ---------------------------------
+
+  const enableFullPush = async () => {
+    setPushMessage('Łączenie z usługą powiadomień...');
+    try {
+      const permission = await enableNotifications();
+      if (permission !== 'granted') throw new Error('Najpierw zezwól aplikacji na powiadomienia.');
+      savePushApiUrl(pushApiUrl);
+      await enablePushNotifications(tasks);
+      setPushStatus('enabled');
+      setPushMessage('✅ Pełne powiadomienia są aktywne także po zamknięciu aplikacji.');
+    } catch (error) {
+      setPushStatus('disabled');
+      setPushMessage(`❌ ${error.message}`);
+    }
+  };
+
+  const disableFullPush = async () => {
+    try {
+      await disablePushNotifications();
+      setPushStatus('disabled');
+      setPushMessage('Powiadomienia w tle zostały wyłączone.');
+    } catch (error) {
+      setPushMessage(`❌ ${error.message}`);
+    }
+  };
 
   const [activeTab, setActiveTab] = useState('today');
   const chartScrollRef = useRef(null);
@@ -335,6 +384,28 @@ export default function App() {
     if (savedTasks) return JSON.parse(savedTasks);
     return [];
   });
+
+  // Niewykonane zadania jednorazowe automatycznie przechodzą na bieżący dzień.
+  useEffect(() => {
+    // Aktualizacja jest celową migracją stanu wywołaną zmianą dnia aplikacji.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTasks((currentTasks) => {
+      let changed = false;
+      const updated = currentTasks.map((task) => {
+        if ((!task.repeat || task.repeat === 'once') && !task.isCompleted && task.dueDate && task.dueDate < todayStr) {
+          changed = true;
+          return {
+            ...task,
+            carriedFrom: task.carriedFrom || task.dueDate,
+            carriedCount: (task.carriedCount || 0) + 1,
+            dueDate: todayStr,
+          };
+        }
+        return task;
+      });
+      return changed ? updated : currentTasks;
+    });
+  }, [todayStr]);
 
   const [workouts, setWorkouts] = useState(() => {
     const savedWorkouts = localStorage.getItem('discipline_workouts');
@@ -497,7 +568,9 @@ export default function App() {
 
   const [isGoogleAuthorized, setIsGoogleAuthorized] = useState(false);
   const [googleBackupStatus, setGoogleBackupStatus] = useState('');
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(() => localStorage.getItem('discipline_auto_backup') !== 'false');
   const tokenClientRef = useRef(null);
+  const importFileRef = useRef(null);
 
   const [showResetConfirmModal, setShowResetConfirmModal] = useState(false); // <--- do restartu aplikacji
 
@@ -581,19 +654,10 @@ export default function App() {
     }
   };
 
-  const backupToGoogleDrive = async () => {
-    setGoogleBackupStatus('Tworzenie kopii...');
+  const backupToGoogleDrive = async ({ silent = false } = {}) => {
+    if (!silent) setGoogleBackupStatus('Tworzenie kopii...');
     try {
-      // 1. Zbieramy wszystkie dane z aplikacji
-      const backupData = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key.startsWith('discipline_')) {
-          backupData[key] = localStorage.getItem(key);
-        }
-      }
-      
-      const fileContent = JSON.stringify(backupData);
+      const fileContent = JSON.stringify(createBackupDocument());
       const fileMetadata = {
         name: 'discipline_app_backup.json',
         mimeType: 'application/json'
@@ -613,19 +677,52 @@ export default function App() {
         fileContent +
         close_delim;
 
+      const existing = await window.gapi.client.drive.files.list({
+        q: "name='discipline_app_backup.json' and trashed=false",
+        spaces: 'drive',
+        fields: 'files(id)',
+        orderBy: 'modifiedTime desc',
+        pageSize: 1,
+      });
+      const existingFileId = existing.result.files?.[0]?.id;
+
       await window.gapi.client.request({
-        path: '/upload/drive/v3/files',
-        method: 'POST',
+        path: existingFileId ? `/upload/drive/v3/files/${existingFileId}` : '/upload/drive/v3/files',
+        method: existingFileId ? 'PATCH' : 'POST',
         params: { uploadType: 'multipart' },
         headers: { 'Content-Type': 'multipart/related; boundary="' + boundary + '"' },
         body: multipartRequestBody
       });
 
-      setGoogleBackupStatus('✅ Sukces! Zapisano na Dysku Google.');
-      setTimeout(() => setGoogleBackupStatus(''), 3000);
+      localStorage.setItem('discipline_last_backup_at', new Date().toISOString());
+      if (!silent) {
+        setGoogleBackupStatus('✅ Sukces! Zapisano na Dysku Google.');
+        setTimeout(() => setGoogleBackupStatus(''), 3000);
+      }
     } catch (err) {
       console.error(err);
-      setGoogleBackupStatus('❌ Błąd podczas zapisu.');
+      if (!silent) setGoogleBackupStatus('❌ Błąd podczas zapisu.');
+    }
+  };
+
+  const exportDataToJson = () => {
+    downloadBackupDocument();
+    setGoogleBackupStatus('✅ Wyeksportowano dane do pliku JSON.');
+    setTimeout(() => setGoogleBackupStatus(''), 3000);
+  };
+
+  const importDataFromJson = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const document = JSON.parse(await file.text());
+      const restoredCount = restoreBackupDocument(document);
+      setGoogleBackupStatus(`✅ Przywrócono ${restoredCount} elementów. Odświeżanie...`);
+      setTimeout(() => window.location.reload(), 800);
+    } catch (error) {
+      setGoogleBackupStatus(`❌ ${error.message}`);
+    } finally {
+      event.target.value = '';
     }
   };
 
@@ -672,11 +769,7 @@ export default function App() {
       });
 
       const restoredData = typeof fileData.result === 'string' ? JSON.parse(fileData.result) : fileData.result;
-      
-      // Nadpisujemy localStorage
-      Object.keys(restoredData).forEach(key => {
-        localStorage.setItem(key, restoredData[key]);
-      });
+      restoreBackupDocument(restoredData);
 
       setGoogleBackupStatus('✅ Sukces! Odświeżanie...');
       setTimeout(() => window.location.reload(), 1000); // Przeładowujemy, aby wczytać stany
@@ -730,9 +823,9 @@ export default function App() {
     }
   }, [theme]);
 
-  // Powiadomienia + przypomnienie o 21:00
+  // Lokalne powiadomienia, gdy aplikacja jest uruchomiona.
   useEffect(() => {
-    const reminderInterval = setInterval(() => {
+    const checkReminders = async () => {
       const now = new Date();
       const currentTimeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
       
@@ -741,37 +834,59 @@ export default function App() {
          if (reviewNotified !== todayStr) {
              setShowWeeklyReviewModal(true);
              localStorage.setItem('discipline_weekly_review_date', todayStr);
-             if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification('Tygodniowy Przegląd! 🏆', { body: 'Czas podsumować ubiegły tydzień i zaplanować nowe zwycięstwa.' });
+             if (notificationStatus === 'granted') {
+                await showAppNotification('Tygodniowy Przegląd! 🏆', { body: 'Czas podsumować ubiegły tydzień i zaplanować nowe zwycięstwa.', tag: `weekly-review-${todayStr}` });
              }
          }
       }
 
       if (currentTimeStr === '21:00') {
         const notified = localStorage.getItem('discipline_daily_plan_notified');
-        if (notified !== todayStr && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification('Czas zaplanować jutro! 🗓️', { body: 'Przejrzyj swoje zadania i zaplanuj kolejny dzień, by utrzymać dyscyplinę.' });
+        if (notified !== todayStr && notificationStatus === 'granted') {
+          await showAppNotification('Czas zaplanować jutro! 🗓️', { body: 'Przejrzyj swoje zadania i zaplanuj kolejny dzień, by utrzymać dyscyplinę.', tag: `daily-plan-${todayStr}` });
           localStorage.setItem('discipline_daily_plan_notified', todayStr);
         }
       }
 
-      tasks.forEach(t => {
+      for (const t of tasks) {
         if (t.hasReminder && t.reminderTime === currentTimeStr && taskAppliesToDate(t, todayStr)) {
           const isDone = isTaskDoneForDate(t, todayStr);
-          if (!isDone && t.lastNotifiedDate !== todayStr && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification('Przypomnienie o zadaniu! ⚡', { body: `Czas na wykonanie: "${t.title}"` });
+          if (!isDone && t.lastNotifiedDate !== todayStr && notificationStatus === 'granted') {
+            await showAppNotification('Przypomnienie o zadaniu! ⚡', { body: `Czas na wykonanie: "${t.title}"`, tag: `task-${t.id}-${todayStr}` });
             setTasks(prev => prev.map(item => item.id === t.id ? { ...item, lastNotifiedDate: todayStr } : item));
           }
         }
-      });
-    }, 30000);
-    return () => clearInterval(reminderInterval);
-  }, [tasks, todayStr]);
+      }
+    };
+
+    checkReminders();
+    const reminderInterval = setInterval(checkReminders, 30000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        setNotificationStatus(getNotificationStatus());
+        checkReminders();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(reminderInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [tasks, todayStr, notificationStatus]);
 
   useEffect(() => localStorage.setItem('discipline_tasks_unified', JSON.stringify(tasks)), [tasks]);
   useEffect(() => localStorage.setItem('discipline_workouts', JSON.stringify(workouts)), [workouts]);
   useEffect(() => localStorage.setItem('discipline_goals', JSON.stringify(goals)), [goals]);
   useEffect(() => localStorage.setItem('discipline_notes', JSON.stringify(notes)), [notes]);
+
+  useEffect(() => {
+    if (pushStatus !== 'enabled' || !getPushApiUrl()) return undefined;
+    const timer = setTimeout(() => {
+      syncPushReminders(tasks).catch((error) => setPushMessage(`Błąd synchronizacji: ${error.message}`));
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [tasks, pushStatus]);
 
 // --- STANY DLA BIBLIOTEKI KSIĄŻEK ---
   const [books, setBooks] = useState(() => {
@@ -779,6 +894,13 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
   useEffect(() => localStorage.setItem('discipline_books', JSON.stringify(books)), [books]);
+
+  useEffect(() => {
+    if (!isGoogleAuthorized || !autoBackupEnabled) return undefined;
+    const timer = setTimeout(() => backupToGoogleDrive({ silent: true }), 12000);
+    return () => clearTimeout(timer);
+  // Kopia uruchamia się dopiero po zmianie danych, a nie po każdym renderze.
+  }, [tasks, workouts, goals, notes, inbox, weeklyReviewData, books, userName, userGender, theme, fontSizeLevel, resetTime, categories, isGoogleAuthorized, autoBackupEnabled]);
 
   const [showBooksModal, setShowBooksModal] = useState(false);
   const [showAddBookModal, setShowAddBookModal] = useState(false);
@@ -1711,6 +1833,21 @@ const handleWizardNext = () => {
     return exists ? t : { ...t, category: 'Ogólne' };
   });
 
+  const priorityTasks = allTodayTasks.filter((task) => task.isPriority).slice(0, 3);
+  const priorityTaskIds = new Set(priorityTasks.map((task) => task.id));
+  const regularTodayTasks = allTodayTasks.filter((task) => !priorityTaskIds.has(task.id));
+  const regularCompletedTodayCount = regularTodayTasks.filter((task) => isTaskDoneForDate(task, todayStr)).length;
+
+  const toggleTaskPriority = (taskId) => {
+    const selectedTask = tasks.find((task) => task.id === taskId);
+    if (!selectedTask?.isPriority && priorityTasks.length >= 3) {
+      alert('Możesz wybrać maksymalnie 3 najważniejsze zadania na dziś.');
+      return;
+    }
+    setTasks((currentTasks) => currentTasks.map((task) =>
+      task.id === taskId ? { ...task, isPriority: !task.isPriority } : task));
+  };
+
   const upcomingTasks = tasks.filter(t => {
     if (t.repeat === 'daily') return false; 
     if (allTodayTasksRaw.some(todayTask => todayTask.id === t.id)) return false;
@@ -2081,6 +2218,78 @@ const handleWizardNext = () => {
     });
     return { pts, tCount, wCount };
   };
+
+  const getDetailedStats = (startDate, endDate) => {
+    let plannedTasks = 0;
+    let completedTasks = 0;
+    let activityCount = 0;
+    let points = 0;
+    let bestDay = { date: null, points: 0 };
+    const cursor = new Date(startDate);
+
+    while (cursor <= endDate) {
+      const dateString = formatDateStr(cursor);
+      let dayPoints = 0;
+      tasks.forEach((task) => {
+        const isRecurring = task.repeat && task.repeat !== 'once';
+        const planned = isRecurring
+          ? taskAppliesToDate(task, dateString)
+          : task.dueDate === dateString;
+        if (planned) plannedTasks += 1;
+
+        const done = isRecurring
+          ? Boolean(task.completedDates?.[dateString])
+          : Boolean(task.isCompleted && task.completedAt === dateString);
+        if (done) {
+          completedTasks += 1;
+          dayPoints += (task.pkt || 20) + (isRecurring && checkStreakBonus(task.id, dateString) ? 10 : 0);
+        }
+      });
+
+      const dayActivities = workouts.filter((workout) => workout.date === dateString);
+      activityCount += dayActivities.length;
+      dayPoints += dayActivities.reduce((sum, workout) => sum + (workout.pkt || 0), 0);
+      points += dayPoints;
+      if (dayPoints > bestDay.points) bestDay = { date: dateString, points: dayPoints };
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return {
+      plannedTasks,
+      completedTasks,
+      activityCount,
+      points,
+      completionRate: plannedTasks > 0 ? Math.min(100, Math.round((completedTasks / plannedTasks) * 100)) : 0,
+      bestDay,
+    };
+  };
+
+  const todayForStats = parseLocalDate(todayStr);
+  const weekStart = new Date(todayForStats);
+  weekStart.setDate(todayForStats.getDate() - 6);
+  const weeklyDetailedStats = getDetailedStats(weekStart, todayForStats);
+
+  const monthStart = new Date(selectedMonthDate.getFullYear(), selectedMonthDate.getMonth(), 1);
+  const monthLastDay = new Date(selectedMonthDate.getFullYear(), selectedMonthDate.getMonth() + 1, 0);
+  const monthEnd = monthLastDay > todayForStats && monthStart <= todayForStats ? todayForStats : monthLastDay;
+  const monthlyDetailedStats = monthStart > todayForStats
+    ? { plannedTasks: 0, completedTasks: 0, activityCount: 0, points: 0, completionRate: 0, bestDay: { date: null, points: 0 } }
+    : getDetailedStats(monthStart, monthEnd);
+
+  const renderDetailedStats = (title, stats, accentClass) => (
+    <div className={'p-5 rounded-3xl border shadow-sm ' + tStyle.cardBg}>
+      <h3 className={'font-bold mb-4 ' + currentFontConfig.sizeClass + ' ' + accentClass}>{title}</h3>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>Skuteczność</span><strong className="text-2xl">{stats.completionRate}%</strong></div>
+        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>Zadania</span><strong className="text-2xl">{stats.completedTasks}/{stats.plannedTasks}</strong></div>
+        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>Aktywności</span><strong className="text-2xl">{stats.activityCount}</strong></div>
+        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>Punkty</span><strong className="text-2xl">{stats.points}</strong></div>
+      </div>
+      <p className={currentFontConfig.smallClass + ' mt-3 ' + tStyle.subText}>
+        Najlepszy dzień: {stats.bestDay.date ? `${stats.bestDay.date} (${stats.bestDay.points} PKT)` : 'brak danych'}
+      </p>
+    </div>
+  );
   // --------------------------------------
 
   return (
@@ -2127,26 +2336,54 @@ const handleWizardNext = () => {
             </div>
           </div>
 
+          <div className="p-4 md:p-5 rounded-3xl border border-amber-500/30 bg-amber-500/10 mb-6 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider text-amber-500 flex items-center gap-2'}>
+                <Star className="w-5 h-5 fill-amber-500" /> 3 najważniejsze zadania
+              </h2>
+              <span className={currentFontConfig.smallClass + ' font-bold text-amber-500'}>{priorityTasks.length}/3</span>
+            </div>
+            {priorityTasks.length === 0 ? (
+              <p className={currentFontConfig.smallClass + ' py-2 ' + tStyle.subText}>W menu zadania wybierz „Ustaw jako priorytet”.</p>
+            ) : (
+              <div className="space-y-2">
+                {priorityTasks.map((task, index) => {
+                  const isDone = isTaskDoneForDate(task, todayStr);
+                  return (
+                    <div key={task.id} className={'w-full p-3 rounded-2xl border flex items-center gap-2 transition-all ' + (isDone ? 'bg-emerald-500/10 border-emerald-500/30 opacity-70' : 'bg-amber-500/10 border-amber-500/30')}>
+                      <button onClick={() => { setConfirmCompleteModal({ type: 'task', id: task.id, name: task.title, isDone, goalId: task.goalId, targetDate: todayStr }); setCompleteTaskValue(''); }} className="flex items-center gap-3 text-left flex-1 min-w-0">
+                        <span className="w-7 h-7 rounded-full bg-amber-500 text-slate-950 font-bold flex items-center justify-center shrink-0">{index + 1}</span>
+                        <span className={'font-medium flex-1 ' + tStyle.titleText + (isDone ? ' line-through' : '')}>{task.title}</span>
+                        {isDone ? <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /> : <Circle className="w-5 h-5 text-amber-500 shrink-0" />}
+                      </button>
+                      <button onClick={() => toggleTaskPriority(task.id)} className="p-2 rounded-xl text-amber-500 hover:bg-amber-500/20" title="Usuń z priorytetów"><Star className="w-4 h-4 fill-amber-500" /></button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <div className="space-y-6">
             <div className={'p-4 md:p-5 rounded-3xl border shadow-sm transition-all bg-slate-500/10 dark:bg-slate-500/10 border-slate-500/20'}>
               <div className="flex justify-between items-center select-none pb-2">
                 <div className="flex items-center gap-2 flex-1">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                   <h2 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider ' + tStyle.titleText}>
-                    Zadania na dzisiaj
+                    {priorityTasks.length > 0 ? 'Pozostałe zadania na dzisiaj' : 'Zadania na dzisiaj'}
                   </h2>
                   <span className={currentFontConfig.smallClass + ' ml-1 ' + tStyle.subText}>
-                    ({completedTodayCount}/{allTodayTasks.length})
+                    ({priorityTasks.length > 0 ? regularCompletedTodayCount : completedTodayCount}/{priorityTasks.length > 0 ? regularTodayTasks.length : allTodayTasks.length})
                   </span>
                 </div>
               </div>
 
               <div className="mt-4 pt-3 border-t border-slate-500/25 space-y-3 animate-fadeIn">
-                {allTodayTasks.length === 0 ? (
-                    <p className={'text-center py-3 opacity-60 ' + currentFontConfig.smallClass + ' ' + tStyle.subText}>Brak zadań na dziś.</p>
+                {regularTodayTasks.length === 0 ? (
+                    <p className={'text-center py-3 opacity-60 ' + currentFontConfig.smallClass + ' ' + tStyle.subText}>{priorityTasks.length > 0 ? 'Brak pozostałych zadań na dziś.' : 'Brak zadań na dziś.'}</p>
                 ) : (
 <div className="space-y-3">
-                     {allTodayTasks.map((task) => {
+                     {regularTodayTasks.map((task) => {
                        const isDone = isTaskDoneForDate(task, todayStr);
                        const dailyStreak = task.repeat === 'daily' ? getTaskStreak(task.id) : 0;
                        const associatedGoal = goals.find(g => g.id === task.goalId);
@@ -2193,6 +2430,12 @@ const handleWizardNext = () => {
                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cTheme.bg} ${cTheme.text} ${cTheme.border}`}>
                                        {task.category}
                                      </span>
+
+                                     {task.carriedCount > 0 && !isDone && (
+                                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border bg-violet-500/20 text-violet-500 border-violet-500/40">
+                                         <RefreshCw className="w-3 h-3" /> Przeniesiono ({task.carriedCount})
+                                       </span>
+                                     )}
 
                                      {/* BADGE OPÓŹNIENIA */}
                                      {isOverdue && (
@@ -2246,7 +2489,18 @@ const handleWizardNext = () => {
                                  </button>
 
                                  {openMenuTaskId === task.id && (
-                                   <div className={"absolute right-0 mt-2 w-36 rounded-xl shadow-lg border z-50 flex flex-col overflow-hidden " + tStyle.cardBg}>
+                                   <div className={"absolute right-0 mt-2 w-48 rounded-xl shadow-lg border z-50 flex flex-col overflow-hidden " + tStyle.cardBg}>
+                                     <button
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setOpenMenuTaskId(null);
+                                         toggleTaskPriority(task.id);
+                                       }}
+                                       className={"flex items-center gap-2 px-3 py-2.5 hover:bg-amber-500/10 transition-colors " + tStyle.subText + " hover:text-amber-500 text-sm font-medium"}
+                                     >
+                                       <Star className={'w-4 h-4 ' + (task.isPriority ? 'fill-amber-500 text-amber-500' : '')} /> {task.isPriority ? 'Usuń z priorytetów' : 'Ustaw jako priorytet'}
+                                     </button>
+                                     <div className="h-px bg-slate-500/20 w-full" />
                                      <button 
                                        onClick={(e) => {
                                          e.stopPropagation();
@@ -2754,6 +3008,11 @@ const handleWizardNext = () => {
                 <span className="font-mono font-bold text-emerald-500 text-lg md:text-xl">{totalPKT} PKT</span>
               </div>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {renderDetailedStats('Ostatnie 7 dni', weeklyDetailedStats, 'text-emerald-500')}
+            {renderDetailedStats(`Miesiąc: ${monthNameDisplay}`, monthlyDetailedStats, 'text-sky-500')}
           </div>
 
           {renderMonthTimeline()}
@@ -3353,6 +3612,34 @@ const handleWizardNext = () => {
                 className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} 
               />
             </div>
+
+            <div className="pt-4 border-t border-slate-500/20">
+              <label className={currentFontConfig.smallClass + ' md:text-sm font-medium flex items-center gap-2 mb-2 ' + tStyle.subText}>
+                <Bell className="w-4 h-4 text-emerald-500" /> Powiadomienia
+              </label>
+              <p className={currentFontConfig.smallClass + ' mb-3 ' + tStyle.subText}>
+                {notificationStatus === 'granted' && 'Powiadomienia są włączone.'}
+                {notificationStatus === 'default' && 'Wymagana jest Twoja zgoda na powiadomienia.'}
+                {notificationStatus === 'denied' && 'Powiadomienia są zablokowane. Włącz je w Ustawieniach iPhone’a dla aplikacji SamoDyscyplina.'}
+                {notificationStatus === 'ios-browser' && 'Na iPhonie uruchom aplikację z ikony dodanej do ekranu początkowego.'}
+                {notificationStatus === 'unsupported' && 'To urządzenie lub przeglądarka nie obsługuje powiadomień PWA.'}
+              </p>
+              {notificationStatus !== 'denied' && notificationStatus !== 'ios-browser' && notificationStatus !== 'unsupported' && (
+                <button onClick={testNotification} className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 py-3 rounded-2xl font-bold transition-transform active:scale-95 flex items-center justify-center gap-2">
+                  <Bell className="w-5 h-5" /> {notificationStatus === 'granted' ? 'Wyślij powiadomienie testowe' : 'Włącz i przetestuj powiadomienia'}
+                </button>
+              )}
+              <div className="mt-4 pt-4 border-t border-slate-500/20 space-y-3">
+                <label className={currentFontConfig.smallClass + ' font-medium block ' + tStyle.subText}>Adres usługi push (Cloudflare Worker)</label>
+                <input type="url" value={pushApiUrl} onChange={(event) => setPushApiUrl(event.target.value)} onBlur={() => savePushApiUrl(pushApiUrl)} placeholder="https://samodyscyplina-push...workers.dev" className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.smallClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
+                {pushStatus === 'enabled' ? (
+                  <button onClick={disableFullPush} className="w-full bg-red-500/10 text-red-500 border border-red-500/30 py-3 rounded-2xl font-bold">Wyłącz powiadomienia w tle</button>
+                ) : (
+                  <button onClick={enableFullPush} disabled={!pushApiUrl.trim()} className="w-full bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 py-3 rounded-2xl font-bold flex items-center justify-center gap-2"><Cloud className="w-5 h-5" /> Włącz powiadomienia w tle</button>
+                )}
+                {pushMessage && <p className={currentFontConfig.smallClass + ' ' + (pushMessage.startsWith('❌') ? 'text-red-500' : 'text-emerald-500')}>{pushMessage}</p>}
+              </div>
+            </div>
             
             <div className="pt-4 border-t border-slate-500/20">
               <label className={currentFontConfig.smallClass + ' md:text-sm font-medium flex items-center gap-2 mb-3 ' + tStyle.subText}>
@@ -3365,8 +3652,12 @@ const handleWizardNext = () => {
                 </button>
               ) : (
                 <div className="space-y-3">
+                   <label className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-slate-500/20">
+                     <span className={currentFontConfig.smallClass + ' ' + tStyle.titleText}>Automatyczna kopia po zmianach</span>
+                     <input type="checkbox" checked={autoBackupEnabled} onChange={(event) => { setAutoBackupEnabled(event.target.checked); localStorage.setItem('discipline_auto_backup', String(event.target.checked)); }} className="w-5 h-5 accent-emerald-500" />
+                   </label>
                    <div className="flex gap-2">
-                     <button onClick={backupToGoogleDrive} className="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-900 py-3 rounded-2xl font-bold transition-transform active:scale-95 flex flex-col items-center justify-center gap-1 shadow-md">
+                     <button onClick={() => backupToGoogleDrive()} className="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-900 py-3 rounded-2xl font-bold transition-transform active:scale-95 flex flex-col items-center justify-center gap-1 shadow-md">
                         Zrób Kopię
                      </button>
                      <button onClick={restoreFromGoogleDrive} className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-900 py-3 rounded-2xl font-bold transition-transform active:scale-95 flex flex-col items-center justify-center gap-1 shadow-md">
@@ -3374,17 +3665,25 @@ const handleWizardNext = () => {
                      </button>
                    </div>
                    
-                   {googleBackupStatus && (
-                      <div className="text-center font-bold text-sm text-emerald-500 bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
-                         {googleBackupStatus}
-                      </div>
-                   )}
-                   
                    <button onClick={handleSignoutClick} className="w-full text-xs font-bold text-red-500 py-2 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors">
                       Wyloguj konto Google
                    </button>
                 </div>
               )}
+              {googleBackupStatus && (
+                <div className="mt-3 text-center font-bold text-sm text-emerald-500 bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">{googleBackupStatus}</div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-slate-500/20">
+              <label className={currentFontConfig.smallClass + ' md:text-sm font-medium flex items-center gap-2 mb-3 ' + tStyle.subText}>
+                <Download className="w-4 h-4 text-emerald-500" /> Eksport i import JSON
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={exportDataToJson} className="py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4" /> Eksportuj</button>
+                <button onClick={() => importFileRef.current?.click()} className="py-3 rounded-2xl bg-violet-500/10 border border-violet-500/30 text-violet-500 font-bold flex items-center justify-center gap-2"><Upload className="w-4 h-4" /> Importuj</button>
+              </div>
+              <input ref={importFileRef} type="file" accept="application/json,.json" onChange={importDataFromJson} className="hidden" />
             </div>
 
             <div className="pt-4 border-t border-slate-500/20">
@@ -3466,7 +3765,7 @@ const handleWizardNext = () => {
               
               <div className="pt-2 border-t border-slate-500/20">
                 <label className="flex items-center gap-2 cursor-pointer mb-2">
-                  <input type="checkbox" checked={editingTask.hasReminder || false} onChange={(e) => { const checked = e.target.checked; setEditingTask({ ...editingTask, hasReminder: checked }); if (checked && 'Notification' in window) Notification.requestPermission(); }} className="w-4 h-4 accent-emerald-500 rounded cursor-pointer" />
+                  <input type="checkbox" checked={editingTask.hasReminder || false} onChange={async (e) => { const checked = e.target.checked; setEditingTask({ ...editingTask, hasReminder: checked }); if (checked) await enableNotifications(); }} className="w-4 h-4 accent-emerald-500 rounded cursor-pointer" />
                   <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>Włącz powiadomienie (przypomnienie)</span>
                 </label>
                 {editingTask.hasReminder && (
@@ -3551,6 +3850,18 @@ const handleWizardNext = () => {
                         {renderCustomCalendar(false, null, null)}
                       </div>
                     </div>
+                  </div>
+                )}
+              </div>
+              <div className="pt-2 border-t border-slate-500/20">
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input type="checkbox" checked={newTaskHasReminder} onChange={async (e) => { const checked = e.target.checked; setNewTaskHasReminder(checked); if (checked) await enableNotifications(); }} className="w-4 h-4 accent-emerald-500 rounded cursor-pointer" />
+                  <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>Włącz powiadomienie (przypomnienie)</span>
+                </label>
+                {newTaskHasReminder && (
+                  <div>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Godzina powiadomienia</label>
+                    <input type="time" value={newTaskReminderTime} onChange={(e) => setNewTaskReminderTime(e.target.value)} className={'w-full rounded-2xl px-4 py-2.5 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-emerald-500 ' + tStyle.inputBg} />
                   </div>
                 )}
               </div>

@@ -10,13 +10,18 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        importScripts: ['notification-sw.js']
+      },
       manifest: {
+        id: '/discipline-app/',
         name: 'SamoDyscyplina',
         short_name: 'Dyscyplina',
         description: 'Aplikacja do budowania nawyków i samodyscypliny',
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
+        lang: 'pl',
         icons: [
           {
             src: 'https://via.placeholder.com/192',

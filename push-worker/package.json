@@ -1,0 +1,18 @@
+{
+  "name": "samodyscyplina-push-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute discipline-push --local --file=./schema.sql",
+    "db:remote": "wrangler d1 execute discipline-push --remote --file=./schema.sql",
+    "generate:vapid": "node scripts/generate-vapid.mjs"
+  },
+  "dependencies": {
+    "@pushforge/builder": "^1.1.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.37.0"
+  }
+}

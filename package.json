@@ -9,7 +9,11 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "push:install": "npm install --prefix push-worker",
+    "push:generate-keys": "npm --prefix push-worker run generate:vapid",
+    "push:db": "npm --prefix push-worker run db:remote",
+    "push:deploy": "npm --prefix push-worker run deploy"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

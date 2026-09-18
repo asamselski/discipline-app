@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "samodyscyplina-push",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "vars": {
+    "ALLOWED_ORIGIN": "https://asamselski.github.io",
+    "VAPID_SUBJECT": "mailto:UZUPELNIJ_SWOJ_EMAIL",
+    "VAPID_PUBLIC_KEY": "UZUPELNIJ_PO_NPM_RUN_GENERATE_VAPID"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "discipline-push",
+      "database_id": "UZUPELNIJ_ID_BAZY_D1"
+    }
+  ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  }
+}

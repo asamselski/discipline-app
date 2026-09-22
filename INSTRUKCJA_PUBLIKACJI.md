@@ -76,6 +76,37 @@ Aplikacja prześle do Workera przypomnienia na najbliższe 30 dni i będzie je a
 
 ## 3. Automatyczna kopia Google Drive
 
+### Konfiguracja przed buildem
+
+1. W Google Cloud włącz `Google Drive API`.
+2. Utwórz dane logowania typu `OAuth client ID` → `Web application` oraz klucz API.
+3. Skopiuj `.env.example` jako `.env.local` i wpisz:
+
+```dotenv
+VITE_GOOGLE_CLIENT_ID=TWÓJ_CLIENT_ID.apps.googleusercontent.com
+VITE_GOOGLE_API_KEY=TWÓJ_KLUCZ_API
+```
+
+`npm run deploy` nadal wykonuje lokalnie `npm run build`, więc Vite wczyta `.env.local` i umieści te wartości w paczce produkcyjnej. Build przerwie się z czytelnym błędem, jeśli którejś wartości zabraknie. Zmienne `VITE_*` są widoczne w kodzie przeglądarkowym; ogranicz klucz API w Google Cloud do Google Drive API oraz adresów tej aplikacji.
+
+W kliencie OAuth ustaw dozwolone źródła JavaScript:
+
+```text
+https://asamselski.github.io
+http://localhost:5173
+```
+
+Google Identity Services używa tutaj okna popup, więc pole `Authorized redirect URIs` pozostaw puste. Dla klucza API ustaw ograniczenie witryn na:
+
+```text
+https://asamselski.github.io
+https://asamselski.github.io/*
+http://localhost:5173
+http://localhost:5173/*
+```
+
+W ograniczeniach API tego klucza wybierz tylko `Google Drive API`. W ekranie zgody dodaj zakres `https://www.googleapis.com/auth/drive.file`. Jeżeli aplikacja ma status `Testing`, dodaj konto używane do logowania do listy test users.
+
 Po zalogowaniu do Google w ustawieniach zaznaczona jest opcja `Automatyczna kopia po zmianach`. Kopia aktualizuje jeden plik `discipline_app_backup.json` około 12 sekund po zmianie danych. Nie tworzy już nowego pliku przy każdym zapisie.
 
 Autoryzacja Google może wymagać ponowienia po ponownym uruchomieniu PWA. Eksport JSON działa niezależnie od Google Drive.

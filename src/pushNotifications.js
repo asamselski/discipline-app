@@ -1,10 +1,14 @@
 const CLIENT_ID_KEY = 'discipline_push_client_id';
 const API_URL_KEY = 'discipline_push_api_url';
+const DEFAULT_PUSH_API_URL =
+  'https://samodyscyplina-push.asamselski.workers.dev';
 
 const normalizeApiUrl = (value) => value?.trim().replace(/\/$/, '') || '';
 
 export const getPushApiUrl = () => normalizeApiUrl(
-  localStorage.getItem(API_URL_KEY) || import.meta.env.VITE_PUSH_API_URL,
+  localStorage.getItem(API_URL_KEY)
+  || import.meta.env.VITE_PUSH_API_URL
+  || DEFAULT_PUSH_API_URL,
 );
 
 export const savePushApiUrl = (value) => {

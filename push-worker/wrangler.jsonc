@@ -1,21 +1,28 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "samodyscyplina-push",
-  "main": "src/index.js",
-  "compatibility_date": "2026-09-01",
-  "vars": {
-    "ALLOWED_ORIGIN": "https://asamselski.github.io",
-    "VAPID_SUBJECT": "mailto:UZUPELNIJ_SWOJ_EMAIL",
-    "VAPID_PUBLIC_KEY": "UZUPELNIJ_PO_NPM_RUN_GENERATE_VAPID"
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "discipline-push",
-      "database_id": "UZUPELNIJ_ID_BAZY_D1"
-    }
-  ],
-  "triggers": {
-    "crons": ["* * * * *"]
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "samodyscyplina-push",
+	"main": "src/index.js",
+	"compatibility_date": "2026-09-01",
+	"vars": {
+		"ALLOWED_ORIGIN": "https://asamselski.github.io",
+		"VAPID_SUBJECT": "mailto:a.samselski.as@gmail.com",
+		"VAPID_PUBLIC_KEY": "BFGB75zBfv7BRO-89Qh5XyOxy03VfQicN4sEh98T-1Chsg0bnH41LWWPmGlBGp-X7BZcxWo-WsWLlBOWBoxkvOA"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "discipline-push",
+			"database_id": "273b4e41-b6c8-4117-b995-1852bc329c7b"
+		},
+		{
+			"binding": "discipline_push",
+			"database_name": "discipline-push",
+			"database_id": "273b4e41-b6c8-4117-b995-1852bc329c7b"
+		}
+	],
+	"triggers": {
+		"crons": [
+			"* * * * *"
+		]
+	}
 }

@@ -57,6 +57,112 @@ const FONT_SIZE_OPTIONS = [
 
 const MAX_LEVEL = 50;
 
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim();
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY?.trim();
+const GOOGLE_DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const GOOGLE_SCRIPT_TIMEOUT_MS = 30000;
+const GOOGLE_TOKEN_STORAGE_KEY = 'discipline_google_access_token';
+const GOOGLE_TOKEN_EXPIRY_MARGIN_MS = 60000;
+
+const saveGoogleAccessToken = (tokenResponse) => {
+  const expiresInSeconds = Number(tokenResponse?.expires_in);
+  if (!tokenResponse?.access_token || !Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0) return;
+
+  localStorage.setItem(GOOGLE_TOKEN_STORAGE_KEY, JSON.stringify({
+    access_token: tokenResponse.access_token,
+    token_type: tokenResponse.token_type || 'Bearer',
+    scope: tokenResponse.scope || GOOGLE_DRIVE_SCOPE,
+    expires_at: Date.now() + expiresInSeconds * 1000,
+  }));
+};
+
+const getStoredGoogleAccessToken = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(GOOGLE_TOKEN_STORAGE_KEY));
+    const hasDriveScope = stored?.scope?.split(' ').includes(GOOGLE_DRIVE_SCOPE);
+    if (stored?.access_token && hasDriveScope && stored.expires_at > Date.now() + GOOGLE_TOKEN_EXPIRY_MARGIN_MS) {
+      return stored;
+    }
+  } catch (error) {
+    console.warn('Nie udało się odczytać zapisanej sesji Google:', error);
+  }
+
+  localStorage.removeItem(GOOGLE_TOKEN_STORAGE_KEY);
+  return null;
+};
+
+const clearStoredGoogleAccessToken = () => {
+  localStorage.removeItem(GOOGLE_TOKEN_STORAGE_KEY);
+};
+
+const loadGoogleScript = (src, isReady, libraryName) => new Promise((resolve, reject) => {
+  if (isReady()) {
+    resolve();
+    return;
+  }
+
+  let script = document.querySelector(`script[src="${src}"]`);
+  const timeoutId = window.setTimeout(() => {
+    cleanup();
+    reject(new Error(`Przekroczono czas ładowania biblioteki ${libraryName}.`));
+  }, GOOGLE_SCRIPT_TIMEOUT_MS);
+  const intervalId = window.setInterval(() => {
+    if (isReady()) finish();
+  }, 100);
+
+  const cleanup = () => {
+    window.clearTimeout(timeoutId);
+    window.clearInterval(intervalId);
+    script?.removeEventListener('load', handleLoad);
+    script?.removeEventListener('error', handleError);
+  };
+  const finish = () => {
+    if (!isReady()) return;
+    cleanup();
+    resolve();
+  };
+  const handleLoad = () => finish();
+  const handleError = () => {
+    cleanup();
+    reject(new Error(`Nie udało się pobrać biblioteki ${libraryName}.`));
+  };
+
+  const shouldAppendScript = !script;
+  if (shouldAppendScript) {
+    script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.defer = true;
+  }
+
+  script.addEventListener('load', handleLoad);
+  script.addEventListener('error', handleError, { once: true });
+  if (shouldAppendScript) document.head.appendChild(script);
+  finish();
+});
+
+const loadGapiClient = () => new Promise((resolve, reject) => {
+  window.gapi.load('client', {
+    callback: resolve,
+    onerror: () => reject(new Error('Nie udało się uruchomić klienta Google API.')),
+    timeout: GOOGLE_SCRIPT_TIMEOUT_MS,
+    ontimeout: () => reject(new Error('Przekroczono czas inicjalizacji Google API.')),
+  });
+});
+
+const getGoogleErrorMessage = (error) => {
+  const code = error?.result?.error?.code ?? error?.status;
+  const detail = error?.result?.error?.message ?? error?.message ?? error?.error_description ?? error?.error;
+  if (code === 401 || error?.result?.error?.status === 'UNAUTHENTICATED') {
+    return 'Sesja Google wygasła. Zaloguj się ponownie.';
+  }
+  if (code === 403) {
+    return 'Google odrzucił dostęp. Sprawdź włączenie Drive API, uprawnienia i ograniczenia klucza API.';
+  }
+  return detail || 'Nieznany błąd połączenia z Google.';
+};
+
 const RANKS = [
   { minLevel: 1, name: 'Kanapowy Wojownik 🛋️' },
   { minLevel: 6, name: 'Poszukiwacz Iskry ✨' },
@@ -71,23 +177,58 @@ const RANKS = [
 ];
 
 const TROPHIES = [
-  { id: 'bronze_task', title: 'Przebudzenie', desc: 'Wykonaj swoje pierwsze zadanie', rank: 'bronze' },
-  { id: 'bronze_workout', title: 'Rozgrzewka', desc: 'Zarejestruj pierwszą aktywność', rank: 'bronze' },
-  { id: 'bronze_level5', title: 'Pierwsza krew', desc: 'Osiągnij 5 poziom', rank: 'bronze' },
-  { id: 'bronze_tasks10', title: 'Rozgrzewka umysłu', desc: 'Wykonaj łącznie 10 zadań', rank: 'bronze' },
-  { id: 'bronze_workouts10', title: 'Młody Wilk', desc: 'Zarejestruj 10 aktywności', rank: 'bronze' },
-  { id: 'silver_level10', title: 'Wędrowiec', desc: 'Osiągnij 10 poziom', rank: 'silver' },
-  { id: 'silver_level20', title: 'Hart Ducha', desc: 'Osiągnij 20 poziom', rank: 'silver' },
-  { id: 'silver_tasks50', title: 'Siła Nawyku', desc: 'Wykonaj łącznie 50 zadań', rank: 'silver' },
-  { id: 'silver_tasks100', title: 'Niezłomny', desc: 'Wykonaj łącznie 100 zadań', rank: 'silver' },
-  { id: 'silver_workouts100', title: 'Stalowe Mięśnie', desc: 'Zarejestruj 100 aktywności', rank: 'silver' },
-  { id: 'gold_level30', title: 'Elita', desc: 'Osiągnij 30 poziom', rank: 'gold' },
-  { id: 'gold_level40', title: 'Nieśmiertelny', desc: 'Osiągnij 40 poziom', rank: 'gold' },
-  { id: 'gold_workouts50', title: 'Maszyna', desc: 'Zarejestruj 50 aktywności', rank: 'gold' },
-  { id: 'gold_tasks500', title: 'Cyborg', desc: 'Wykonaj łącznie 500 zadań', rank: 'gold' },
-  { id: 'gold_workouts500', title: 'Herkules', desc: 'Zarejestruj 500 aktywności', rank: 'gold' },
-  { id: 'platinum_level50', title: 'Absolutny Szczyt', desc: 'Osiągnij maksymalny 50 poziom', rank: 'platinum' },
-  { id: 'platinum_master', title: 'Mistrz Dyscypliny', desc: 'Zdobądź wszystkie pozostałe trofea', rank: 'platinum' }
+  { id: 'bronze_task', title: 'Przebudzenie', desc: 'Wykonaj swoje pierwsze zadanie', rank: 'bronze', metric: 'tasks', target: 1 },
+  { id: 'bronze_tasks3', title: 'Dobry początek', desc: 'Wykonaj łącznie 3 zadania', rank: 'bronze', metric: 'tasks', target: 3 },
+  { id: 'bronze_tasks5', title: 'Pierwszy rytm', desc: 'Wykonaj łącznie 5 zadań', rank: 'bronze', metric: 'tasks', target: 5 },
+  { id: 'bronze_tasks10', title: 'Rozgrzewka umysłu', desc: 'Wykonaj łącznie 10 zadań', rank: 'bronze', metric: 'tasks', target: 10 },
+  { id: 'bronze_tasks15', title: 'Coraz pewniej', desc: 'Wykonaj łącznie 15 zadań', rank: 'bronze', metric: 'tasks', target: 15 },
+  { id: 'bronze_tasks25', title: 'Ćwierć setki', desc: 'Wykonaj łącznie 25 zadań', rank: 'bronze', metric: 'tasks', target: 25 },
+  { id: 'bronze_workout', title: 'Rozgrzewka', desc: 'Zarejestruj pierwszą aktywność', rank: 'bronze', metric: 'workouts', target: 1 },
+  { id: 'bronze_workouts3', title: 'W ruchu', desc: 'Zarejestruj 3 aktywności', rank: 'bronze', metric: 'workouts', target: 3 },
+  { id: 'bronze_workouts5', title: 'Aktywny tydzień', desc: 'Zarejestruj 5 aktywności', rank: 'bronze', metric: 'workouts', target: 5 },
+  { id: 'bronze_workouts10', title: 'Młody Wilk', desc: 'Zarejestruj 10 aktywności', rank: 'bronze', metric: 'workouts', target: 10 },
+  { id: 'bronze_level2', title: 'Pierwszy awans', desc: 'Osiągnij 2 poziom', rank: 'bronze', metric: 'level', target: 2 },
+  { id: 'bronze_level3', title: 'Nabierasz rozpędu', desc: 'Osiągnij 3 poziom', rank: 'bronze', metric: 'level', target: 3 },
+  { id: 'bronze_level5', title: 'Pierwsza krew', desc: 'Osiągnij 5 poziom', rank: 'bronze', metric: 'level', target: 5 },
+  { id: 'bronze_note', title: 'Chwila refleksji', desc: 'Zapisz pierwszą notatkę dnia', rank: 'bronze', metric: 'notes', target: 1 },
+  { id: 'bronze_goal', title: 'Cel osiągnięty', desc: 'Ukończ swój pierwszy cel', rank: 'bronze', metric: 'goals', target: 1 },
+  { id: 'bronze_days3', title: 'Trzy dni działania', desc: 'Bądź aktywny w 3 różnych dniach', rank: 'bronze', metric: 'activeDays', target: 3 },
+  { id: 'bronze_days7', title: 'Pełny tydzień', desc: 'Bądź aktywny w 7 różnych dniach', rank: 'bronze', metric: 'activeDays', target: 7 },
+  { id: 'bronze_reading', title: 'Pierwsze strony', desc: 'Zarejestruj pierwszą aktywność czytelniczą', rank: 'bronze', metric: 'reading', target: 1 },
+  { id: 'bronze_categories3', title: 'Wszechstronny', desc: 'Wykonaj zadania z 3 różnych kategorii', rank: 'bronze', metric: 'categories', target: 3 },
+  { id: 'bronze_points100', title: 'Pierwsza setka', desc: 'Zdobądź łącznie 100 punktów', rank: 'bronze', metric: 'points', target: 100 },
+
+  { id: 'silver_tasks50', title: 'Siła Nawyku', desc: 'Wykonaj łącznie 50 zadań', rank: 'silver', metric: 'tasks', target: 50 },
+  { id: 'silver_tasks75', title: 'Stabilna forma', desc: 'Wykonaj łącznie 75 zadań', rank: 'silver', metric: 'tasks', target: 75 },
+  { id: 'silver_tasks100', title: 'Niezłomny', desc: 'Wykonaj łącznie 100 zadań', rank: 'silver', metric: 'tasks', target: 100 },
+  { id: 'silver_tasks150', title: 'Żelazna rutyna', desc: 'Wykonaj łącznie 150 zadań', rank: 'silver', metric: 'tasks', target: 150 },
+  { id: 'silver_tasks200', title: 'Dwieście zwycięstw', desc: 'Wykonaj łącznie 200 zadań', rank: 'silver', metric: 'tasks', target: 200 },
+  { id: 'silver_workouts25', title: 'Sportowy nawyk', desc: 'Zarejestruj 25 aktywności', rank: 'silver', metric: 'workouts', target: 25 },
+  { id: 'gold_workouts50', title: 'Maszyna', desc: 'Zarejestruj 50 aktywności', rank: 'silver', metric: 'workouts', target: 50 },
+  { id: 'silver_workouts75', title: 'Nie zwalniasz', desc: 'Zarejestruj 75 aktywności', rank: 'silver', metric: 'workouts', target: 75 },
+  { id: 'silver_workouts100', title: 'Stalowe Mięśnie', desc: 'Zarejestruj 100 aktywności', rank: 'silver', metric: 'workouts', target: 100 },
+  { id: 'silver_level10', title: 'Wędrowiec', desc: 'Osiągnij 10 poziom', rank: 'silver', metric: 'level', target: 10 },
+  { id: 'silver_level15', title: 'Zdobywca', desc: 'Osiągnij 15 poziom', rank: 'silver', metric: 'level', target: 15 },
+  { id: 'silver_level20', title: 'Hart Ducha', desc: 'Osiągnij 20 poziom', rank: 'silver', metric: 'level', target: 20 },
+  { id: 'silver_level25', title: 'Połowa drogi', desc: 'Osiągnij 25 poziom', rank: 'silver', metric: 'level', target: 25 },
+  { id: 'silver_notes10', title: 'Uważny obserwator', desc: 'Zapisz notatki dla 10 dni', rank: 'silver', metric: 'notes', target: 10 },
+  { id: 'silver_goals3', title: 'Skuteczny strateg', desc: 'Ukończ 3 cele', rank: 'silver', metric: 'goals', target: 3 },
+  { id: 'silver_days14', title: 'Dwa tygodnie działania', desc: 'Bądź aktywny w 14 różnych dniach', rank: 'silver', metric: 'activeDays', target: 14 },
+  { id: 'silver_points1500', title: 'Punktowy wojownik', desc: 'Zdobądź łącznie 1500 punktów', rank: 'silver', metric: 'points', target: 1500 },
+
+  { id: 'gold_tasks250', title: 'Ćwierć tysiąca', desc: 'Wykonaj łącznie 250 zadań', rank: 'gold', metric: 'tasks', target: 250 },
+  { id: 'gold_tasks300', title: 'Mistrz działania', desc: 'Wykonaj łącznie 300 zadań', rank: 'gold', metric: 'tasks', target: 300 },
+  { id: 'gold_tasks400', title: 'Potęga konsekwencji', desc: 'Wykonaj łącznie 400 zadań', rank: 'gold', metric: 'tasks', target: 400 },
+  { id: 'gold_tasks500', title: 'Cyborg', desc: 'Wykonaj łącznie 500 zadań', rank: 'gold', metric: 'tasks', target: 500 },
+  { id: 'gold_tasks750', title: 'Legenda działania', desc: 'Wykonaj łącznie 750 zadań', rank: 'gold', metric: 'tasks', target: 750 },
+  { id: 'gold_workouts150', title: 'Atleta', desc: 'Zarejestruj 150 aktywności', rank: 'gold', metric: 'workouts', target: 150 },
+  { id: 'gold_workouts250', title: 'Tytan ruchu', desc: 'Zarejestruj 250 aktywności', rank: 'gold', metric: 'workouts', target: 250 },
+  { id: 'gold_workouts500', title: 'Herkules', desc: 'Zarejestruj 500 aktywności', rank: 'gold', metric: 'workouts', target: 500 },
+  { id: 'gold_level30', title: 'Elita', desc: 'Osiągnij 30 poziom', rank: 'gold', metric: 'level', target: 30 },
+  { id: 'gold_level40', title: 'Nieśmiertelny', desc: 'Osiągnij 40 poziom', rank: 'gold', metric: 'level', target: 40 },
+  { id: 'platinum_level50', title: 'Absolutny Szczyt', desc: 'Osiągnij maksymalny 50 poziom', rank: 'gold', metric: 'level', target: 50 },
+  { id: 'gold_days60', title: 'Długodystansowiec', desc: 'Bądź aktywny w 60 różnych dniach', rank: 'gold', metric: 'activeDays', target: 60 },
+  { id: 'gold_goals10', title: 'Architekt sukcesu', desc: 'Ukończ 10 celów', rank: 'gold', metric: 'goals', target: 10 }
 ];
 
 const GOAL_CATEGORIES_CONFIG = {
@@ -126,15 +267,11 @@ const GOAL_CATEGORIES_CONFIG = {
   }
 };
 
-const rankWeight = { bronze: 1, silver: 2, gold: 3, platinum: 4 };
-const sortedTrophies = [...TROPHIES].sort((a, b) => rankWeight[b.rank] - rankWeight[a.rank]);
-
 const getTrophyColors = (rank, isEarned) => {
   if (!isEarned) return 'bg-slate-500/10 border-slate-500/20 text-slate-500 opacity-60 grayscale';
   if (rank === 'bronze') return 'bg-orange-700/20 border-orange-600/50 text-orange-500 shadow-inner';
   if (rank === 'silver') return 'bg-slate-300/20 border-slate-300/50 text-slate-300 shadow-inner';
   if (rank === 'gold') return 'bg-amber-500/20 border-amber-500/50 text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]';
-  if (rank === 'platinum') return 'bg-cyan-400/20 border-cyan-400/50 text-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.4)] ring-1 ring-cyan-400';
 };
 
 const getLevelInfo = (pkt) => {
@@ -560,97 +697,116 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(() => getAppDayString());
 
   // --- KONFIGURACJA GOOGLE DRIVE ---
-  // TUTAJ WKLEJ SWOJE KLUCZE Z GOOGLE CLOUD CONSOLE:
-  const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
-  const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
-  const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-
   const [isGoogleAuthorized, setIsGoogleAuthorized] = useState(false);
   const [googleBackupStatus, setGoogleBackupStatus] = useState('');
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(() => localStorage.getItem('discipline_auto_backup') !== 'false');
   const tokenClientRef = useRef(null);
+  const googleInitPromiseRef = useRef(null);
   const importFileRef = useRef(null);
 
   const [showResetConfirmModal, setShowResetConfirmModal] = useState(false); // <--- do restartu aplikacji
 
-  // Inicjalizacja Google API
-// Inicjalizacja Google API (Odporna na wolniejsze telefony)
-  useEffect(() => {
-    let retryCount = 0;
+  const initializeGoogle = () => {
+    if (googleInitPromiseRef.current) return googleInitPromiseRef.current;
 
-    const initGapiClient = async () => {
-      try {
-        await window.gapi.client.init({
-          apiKey: GOOGLE_API_KEY,
-          discoveryDocs: [DISCOVERY_DOC],
-        });
-      } catch (err) {
-        console.error('Błąd GAPI:', err);
+    googleInitPromiseRef.current = (async () => {
+      if (!GOOGLE_CLIENT_ID || !GOOGLE_API_KEY) {
+        throw new Error('Brak VITE_GOOGLE_CLIENT_ID lub VITE_GOOGLE_API_KEY w buildzie aplikacji.');
       }
-    };
 
-    const tryInitGoogle = () => {
-      // Upewniamy się, że wszystkie wtyczki z pliku Google są pobrane i gotowe
-      if (window.gapi && window.google && window.google.accounts && window.google.accounts.oauth2) {
-        window.gapi.load('client', initGapiClient);
-        tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: SCOPES,
-          callback: (tokenResponse) => {
-            if (tokenResponse && tokenResponse.access_token) {
-              setIsGoogleAuthorized(true);
-            }
-          },
-        });
-      } else if (retryCount < 20) {
-        // Jeśli nie są gotowe, próbujemy ponownie (max 20 razy, czyli 10 sekund)
-        retryCount++;
-        setTimeout(tryInitGoogle, 500); 
-      }
-    };
+      await Promise.all([
+        loadGoogleScript(
+          'https://apis.google.com/js/api.js',
+          () => Boolean(window.gapi?.load),
+          'Google API'
+        ),
+        loadGoogleScript(
+          'https://accounts.google.com/gsi/client',
+          () => Boolean(window.google?.accounts?.oauth2),
+          'Google Identity Services'
+        ),
+      ]);
 
-    const loadScript = (src) => {
-      return new Promise((resolve, reject) => {
-        if (document.querySelector(`script[src="${src}"]`)) {
-          resolve();
-          return;
-        }
-        const script = document.createElement('script');
-        script.src = src;
-        script.async = true;
-        script.defer = true;
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
+      await loadGapiClient();
+      await window.gapi.client.init({
+        apiKey: GOOGLE_API_KEY,
+        discoveryDocs: [GOOGLE_DISCOVERY_DOC],
       });
-    };
 
-    Promise.all([
-      loadScript('https://apis.google.com/js/api.js'),
-      loadScript('https://accounts.google.com/gsi/client')
-    ]).then(() => {
-      tryInitGoogle(); // Uruchamia naszą cierpliwą pętlę
-    }).catch(err => {
-      console.error('Nie udało się załadować skryptów Google.', err);
+      const storedToken = getStoredGoogleAccessToken();
+      if (storedToken) {
+        window.gapi.client.setToken(storedToken);
+        setIsGoogleAuthorized(true);
+      }
+
+      tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: GOOGLE_DRIVE_SCOPE,
+        callback: (tokenResponse) => {
+          if (tokenResponse?.error) {
+            setIsGoogleAuthorized(false);
+            setGoogleBackupStatus(`❌ Logowanie Google: ${getGoogleErrorMessage(tokenResponse)}`);
+            return;
+          }
+          if (!tokenResponse?.access_token || !window.google.accounts.oauth2.hasGrantedAllScopes(tokenResponse, GOOGLE_DRIVE_SCOPE)) {
+            setIsGoogleAuthorized(false);
+            setGoogleBackupStatus('❌ Nie przyznano dostępu do kopii na Dysku Google.');
+            return;
+          }
+          saveGoogleAccessToken(tokenResponse);
+          window.gapi.client.setToken(tokenResponse);
+          setIsGoogleAuthorized(true);
+          setGoogleBackupStatus('✅ Połączono z Dyskiem Google.');
+          setTimeout(() => setGoogleBackupStatus(''), 3000);
+        },
+        error_callback: (error) => {
+          const message = error?.type === 'popup_closed'
+            ? 'Okno logowania zostało zamknięte.'
+            : error?.type === 'popup_failed_to_open'
+              ? 'Przeglądarka zablokowała okno logowania.'
+              : getGoogleErrorMessage(error);
+          setGoogleBackupStatus(`❌ ${message}`);
+        },
+      });
+    })().catch((error) => {
+      googleInitPromiseRef.current = null;
+      throw error;
     });
 
+    return googleInitPromiseRef.current;
+  };
+
+  useEffect(() => {
+    initializeGoogle().catch((error) => {
+      console.error('Nie udało się zainicjalizować Google:', error);
+      setGoogleBackupStatus(`❌ Google Drive: ${getGoogleErrorMessage(error)}`);
+    });
   }, []);
 
-  const handleAuthClick = () => {
-    if (tokenClientRef.current) {
-      tokenClientRef.current.requestAccessToken({ prompt: '' });
-    } else {
-      alert('Czekam na połączenie z Google... Jeśli używasz wolnego internetu, poczekaj jeszcze chwilę i spróbuj ponownie.');
+  const handleAuthClick = async () => {
+    setGoogleBackupStatus('Łączenie z Google...');
+    try {
+      await initializeGoogle();
+      const prompt = window.gapi.client.getToken() === null ? 'consent' : '';
+      tokenClientRef.current.requestAccessToken({ prompt });
+    } catch (error) {
+      console.error('Błąd logowania Google:', error);
+      setGoogleBackupStatus(`❌ Google Drive: ${getGoogleErrorMessage(error)}`);
     }
   };
   const handleSignoutClick = () => {
-    const token = window.gapi.client.getToken();
-    if (token !== null) {
-      window.google.accounts.oauth2.revoke(token.access_token, () => {
-        window.gapi.client.setToken('');
-        setIsGoogleAuthorized(false);
-      });
+    const token = window.gapi?.client?.getToken();
+    const finishSignout = () => {
+      clearStoredGoogleAccessToken();
+      window.gapi?.client?.setToken('');
+      setIsGoogleAuthorized(false);
+      setGoogleBackupStatus('Wylogowano konto Google.');
+    };
+
+    if (token?.access_token) {
+      window.google.accounts.oauth2.revoke(token.access_token, finishSignout);
+    } else {
+      finishSignout();
     }
   };
 
@@ -701,7 +857,15 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      if (!silent) setGoogleBackupStatus('❌ Błąd podczas zapisu.');
+      const message = getGoogleErrorMessage(err);
+      if (err?.status === 401 || err?.result?.error?.code === 401) {
+        clearStoredGoogleAccessToken();
+        window.gapi?.client?.setToken('');
+        setIsGoogleAuthorized(false);
+      }
+      if (!silent || err?.status === 401 || err?.result?.error?.code === 401) {
+        setGoogleBackupStatus(`❌ Nie zapisano kopii: ${message}`);
+      }
     }
   };
 
@@ -776,7 +940,12 @@ export default function App() {
 
     } catch (err) {
       console.error(err);
-      setGoogleBackupStatus('❌ Błąd podczas pobierania.');
+      if (err?.status === 401 || err?.result?.error?.code === 401) {
+        clearStoredGoogleAccessToken();
+        window.gapi?.client?.setToken('');
+        setIsGoogleAuthorized(false);
+      }
+      setGoogleBackupStatus(`❌ Nie pobrano kopii: ${getGoogleErrorMessage(err)}`);
     }
   };
   // ----------------------------------------------
@@ -828,13 +997,16 @@ export default function App() {
     const checkReminders = async () => {
       const now = new Date();
       const currentTimeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+      // Web Push jest jedynym nadawcą zaplanowanych przypomnień, gdy pełne
+      // powiadomienia w tle są aktywne. Lokalny timer pozostaje fallbackiem.
+      const shouldShowLocalNotification = pushStatus !== 'enabled' && pushStatus !== 'checking';
       
       if (now.getDay() === 1 && now.getHours() >= 8) {
          const reviewNotified = localStorage.getItem('discipline_weekly_review_date');
          if (reviewNotified !== todayStr) {
              setShowWeeklyReviewModal(true);
              localStorage.setItem('discipline_weekly_review_date', todayStr);
-             if (notificationStatus === 'granted') {
+             if (shouldShowLocalNotification && notificationStatus === 'granted') {
                 await showAppNotification('Tygodniowy Przegląd! 🏆', { body: 'Czas podsumować ubiegły tydzień i zaplanować nowe zwycięstwa.', tag: `weekly-review-${todayStr}` });
              }
          }
@@ -842,7 +1014,7 @@ export default function App() {
 
       if (currentTimeStr === '21:00') {
         const notified = localStorage.getItem('discipline_daily_plan_notified');
-        if (notified !== todayStr && notificationStatus === 'granted') {
+        if (notified !== todayStr && shouldShowLocalNotification && notificationStatus === 'granted') {
           await showAppNotification('Czas zaplanować jutro! 🗓️', { body: 'Przejrzyj swoje zadania i zaplanuj kolejny dzień, by utrzymać dyscyplinę.', tag: `daily-plan-${todayStr}` });
           localStorage.setItem('discipline_daily_plan_notified', todayStr);
         }
@@ -851,7 +1023,7 @@ export default function App() {
       for (const t of tasks) {
         if (t.hasReminder && t.reminderTime === currentTimeStr && taskAppliesToDate(t, todayStr)) {
           const isDone = isTaskDoneForDate(t, todayStr);
-          if (!isDone && t.lastNotifiedDate !== todayStr && notificationStatus === 'granted') {
+          if (!isDone && t.lastNotifiedDate !== todayStr && shouldShowLocalNotification && notificationStatus === 'granted') {
             await showAppNotification('Przypomnienie o zadaniu! ⚡', { body: `Czas na wykonanie: "${t.title}"`, tag: `task-${t.id}-${todayStr}` });
             setTasks(prev => prev.map(item => item.id === t.id ? { ...item, lastNotifiedDate: todayStr } : item));
           }
@@ -873,7 +1045,7 @@ export default function App() {
       clearInterval(reminderInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [tasks, todayStr, notificationStatus]);
+  }, [tasks, todayStr, notificationStatus, pushStatus]);
 
   useEffect(() => localStorage.setItem('discipline_tasks_unified', JSON.stringify(tasks)), [tasks]);
   useEffect(() => localStorage.setItem('discipline_workouts', JSON.stringify(workouts)), [workouts]);
@@ -1725,16 +1897,48 @@ const handleWizardNext = () => {
 
   useEffect(() => {
     let totalTaskCompletions = 0;
+    const activeDates = new Set();
+    const completedCategories = new Set();
+
     tasks.forEach(t => {
       if(t.repeat && t.repeat !== 'once') {
-        totalTaskCompletions += Object.values(t.completedDates || {}).filter(Boolean).length;
+        Object.entries(t.completedDates || {}).forEach(([date, isCompleted]) => {
+          if (!isCompleted) return;
+          totalTaskCompletions++;
+          activeDates.add(date);
+          if (t.category) completedCategories.add(t.category);
+        });
       } else if (t.isCompleted) {
         totalTaskCompletions++;
+        if (t.completedAt || t.dueDate) activeDates.add(t.completedAt || t.dueDate);
+        if (t.category) completedCategories.add(t.category);
       }
     });
-    
+
+    workouts.forEach(workout => {
+      if (workout.date) activeDates.add(workout.date);
+    });
+
     const totalWorkoutsCount = workouts.length;
-    const currentLevel = levelInfo.level;
+    const completedGoalsCount = goals.filter(goal => {
+      if (goal.isDaily || !goal.target) return false;
+      const isProgressType = ['read_book', 'read_chapters', 'study', 'no_sweets'].includes(goal.type);
+      const currentValue = isProgressType
+        ? (goal.currentPage || 0)
+        : workouts.filter(workout => workout.type === goal.type).reduce((sum, workout) => sum + workout.amount, 0);
+      return currentValue >= goal.target;
+    }).length;
+    const trophyMetrics = {
+      tasks: totalTaskCompletions,
+      workouts: totalWorkoutsCount,
+      level: levelInfo.level,
+      notes: Object.values(notes).filter(note => typeof note === 'string' && note.trim()).length,
+      goals: completedGoalsCount,
+      activeDays: activeDates.size,
+      reading: workouts.filter(workout => ['read_book', 'read_chapters'].includes(workout.type)).length,
+      categories: completedCategories.size,
+      points: totalPKT,
+    };
 
     const newlyEarned = [];
     const updatedTrophies = { ...earnedTrophies };
@@ -1746,38 +1950,26 @@ const handleWizardNext = () => {
       }
     };
 
-    checkAndAward('bronze_task', totalTaskCompletions >= 1);
-    checkAndAward('bronze_workout', totalWorkoutsCount >= 1);
-    checkAndAward('bronze_level5', currentLevel >= 5);
-    checkAndAward('bronze_tasks10', totalTaskCompletions >= 10);
-    checkAndAward('bronze_workouts10', totalWorkoutsCount >= 10);
-    checkAndAward('silver_level10', currentLevel >= 10);
-    checkAndAward('silver_level20', currentLevel >= 20);
-    checkAndAward('silver_tasks50', totalTaskCompletions >= 50);
-    checkAndAward('silver_tasks100', totalTaskCompletions >= 100);
-    checkAndAward('silver_workouts100', totalWorkoutsCount >= 100);
-    checkAndAward('gold_level30', currentLevel >= 30);
-    checkAndAward('gold_level40', currentLevel >= 40);
-    checkAndAward('gold_workouts50', totalWorkoutsCount >= 50);
-    checkAndAward('gold_tasks500', totalTaskCompletions >= 500);
-    checkAndAward('gold_workouts500', totalWorkoutsCount >= 500);
-    checkAndAward('platinum_level50', currentLevel >= 50);
-
-    const earnedCount = Object.keys(updatedTrophies).filter(k => k !== 'platinum_master').length;
-    checkAndAward('platinum_master', earnedCount >= 16);
+    TROPHIES.forEach(trophy => {
+      checkAndAward(trophy.id, trophyMetrics[trophy.metric] >= trophy.target);
+    });
 
     if (newlyEarned.length > 0) {
       setEarnedTrophies(updatedTrophies);
       localStorage.setItem('discipline_trophies', JSON.stringify(updatedTrophies));
       const latestTrophy = TROPHIES.find(t => t.id === newlyEarned[newlyEarned.length - 1]);
-      setNewTrophyModal(latestTrophy);
+      setNewTrophyModal({ ...latestTrophy, isNew: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, workouts, levelInfo.level, todayStr]);
+  }, [tasks, workouts, goals, notes, levelInfo.level, totalPKT, todayStr]);
 
   const handleShareTrophy = async (trophy) => {
-    const rankName = trophy.rank === 'platinum' ? 'Platynowe' : trophy.rank === 'gold' ? 'Złote' : trophy.rank === 'silver' ? 'Srebrne' : 'Brązowe';
-    const textToShare = `Właśnie odblokowałem ${rankName} trofeum: "${trophy.title}" w mojej drodze po samodyscyplinę! 🏆🔥`;
+    const earnedDate = earnedTrophies[trophy.id];
+    if (!earnedDate) return;
+
+    const rankName = trophy.rank === 'gold' ? 'Złote' : trophy.rank === 'silver' ? 'Srebrne' : 'Brązowe';
+    const formattedDate = parseLocalDate(earnedDate).toLocaleDateString('pl-PL');
+    const textToShare = `${rankName} trofeum „${trophy.title}” zdobyte ${formattedDate} w aplikacji SamoDyscyplina! 🏆🔥`;
     
     if (navigator.share) {
         try {
@@ -2292,6 +2484,19 @@ const handleWizardNext = () => {
   );
   // --------------------------------------
 
+  const earnedTrophiesCount = TROPHIES.filter(trophy => Boolean(earnedTrophies[trophy.id])).length;
+  const isAnyModalOpen = Boolean(
+    showAddGoalModal || goalWizardStep > 0 || newTrophyModal ||
+    showArchiveModal || showSettingsModal || showTrophiesModal || editingTask ||
+    showAddTaskModal || showAddWorkoutModal || showAddReadingModal ||
+    showInboxAddModal || showInboxListModal || editingWorkout ||
+    showAddActivityModal || editingGoal || showAllQuotesModal ||
+    confirmDeleteModal || confirmCompleteModal || showDeleteNoteConfirm ||
+    (quoteModal.show && quoteModal.data) || showRanksModal ||
+    showWeeklyReviewModal || showBooksModal || showAddBookModal ||
+    showResetConfirmModal || showYesterdayModal
+  );
+
   return (
     <div className={'min-h-screen pb-32 px-4 md:px-8 pt-6 md:pt-10 max-w-md md:max-w-3xl lg:max-w-5xl mx-auto select-none transition-colors duration-300 ' + currentFontConfig.sizeClass}>
         
@@ -2649,27 +2854,42 @@ const handleWizardNext = () => {
 
           </div>
 
-          <div className="fixed bottom-24 right-6 md:right-12 flex flex-col items-end gap-3 z-40">
-            {isFabOpen && (
-              <div className="flex flex-col items-end gap-2.5 animate-fadeIn mb-3">
-                <button onClick={() => { setFormErrors({}); setShowAddTaskModal(true); setIsFabOpen(false); }} className={'bg-emerald-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
-                  <CheckSquare className="w-4 h-4" /> Dodaj zadanie
-                </button>
-                <button onClick={() => { setFormErrors({}); setSelectedSportWorkouts({}); setMultiWorkoutStep(1); setShowAddWorkoutModal(true); setIsFabOpen(false); }} className={'bg-orange-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
-                  <Dumbbell className="w-4 h-4" /> Dodaj trening
-                </button>
-                <button onClick={() => { setFormErrors({}); setShowAddReadingModal(true); setIsFabOpen(false); }} className={'bg-sky-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
-                  <BookOpen className="w-4 h-4" /> Dodaj czytanie
-                </button>
-                <button onClick={() => { setShowInboxAddModal(true); setIsFabOpen(false); }} className={'bg-violet-500 text-white px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
-                  <Brain className="w-4 h-4" /> Zrzut myśli
-                </button>
-              </div>
-            )}
-            <button onClick={() => setIsFabOpen(!isFabOpen)} className={'bg-emerald-500 hover:bg-emerald-400 text-slate-950 p-4.5 rounded-full shadow-lg shadow-emerald-500/30 font-bold transition-transform duration-300 active:scale-95 flex items-center justify-center ' + (isFabOpen ? 'rotate-45 bg-amber-500' : '')}>
-              <Plus className="w-7 h-7 stroke-[3]" />
-            </button>
-          </div>
+          {isFabOpen && !isAnyModalOpen && (
+            <button
+              type="button"
+              aria-label="Zamknij menu dodawania"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setIsFabOpen(false);
+              }}
+              className="fixed inset-0 z-[900] cursor-default bg-transparent border-0 p-0"
+            />
+          )}
+
+          {!isAnyModalOpen && (
+            <div className="fixed bottom-24 right-6 md:right-12 flex flex-col items-end gap-3 z-[901]">
+              {isFabOpen && (
+                <div className="flex flex-col items-end gap-2.5 animate-fadeIn mb-3">
+                  <button onClick={() => { setFormErrors({}); setShowAddTaskModal(true); setIsFabOpen(false); }} className={'bg-emerald-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
+                    <CheckSquare className="w-4 h-4" /> Dodaj zadanie
+                  </button>
+                  <button onClick={() => { setFormErrors({}); setSelectedSportWorkouts({}); setMultiWorkoutStep(1); setShowAddWorkoutModal(true); setIsFabOpen(false); }} className={'bg-orange-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
+                    <Dumbbell className="w-4 h-4" /> Dodaj trening
+                  </button>
+                  <button onClick={() => { setFormErrors({}); setShowAddReadingModal(true); setIsFabOpen(false); }} className={'bg-sky-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
+                    <BookOpen className="w-4 h-4" /> Dodaj czytanie
+                  </button>
+                  <button onClick={() => { setShowInboxAddModal(true); setIsFabOpen(false); }} className={'bg-violet-500 text-white px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
+                    <Brain className="w-4 h-4" /> Zrzut myśli
+                  </button>
+                </div>
+              )}
+              <button onClick={() => setIsFabOpen(!isFabOpen)} className={'bg-emerald-500 hover:bg-emerald-400 text-slate-950 p-4.5 rounded-full shadow-lg shadow-emerald-500/30 font-bold transition-transform duration-300 active:scale-95 flex items-center justify-center ' + (isFabOpen ? 'rotate-45 bg-amber-500' : '')}>
+                <Plus className="w-7 h-7 stroke-[3]" />
+              </button>
+            </div>
+          )}
         </>
       )}
 
@@ -2934,7 +3154,7 @@ const handleWizardNext = () => {
                 </div>
                 <div className="text-left">
                    <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>Moja Gablota Trofeów</h3>
-                   <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Zobacz zdobyte osiągnięcia ({Object.keys(earnedTrophies).length}/{TROPHIES.length})</p>
+                   <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Zobacz zdobyte osiągnięcia ({earnedTrophiesCount}/{TROPHIES.length})</p>
                 </div>
              </div>
              <ChevronRight className={"w-6 h-6 " + tStyle.subText} />
@@ -3422,13 +3642,81 @@ const handleWizardNext = () => {
         </div>
       )}
 
+      {showTrophiesModal && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 z-[400] animate-fadeIn">
+          <div className={'w-full max-w-4xl max-h-[90vh] rounded-3xl p-5 md:p-7 shadow-2xl border flex flex-col ' + tStyle.modalBg}>
+            <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-slate-500/25">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-500 border border-amber-500/40">
+                  <Award className="w-7 h-7" />
+                </div>
+                <div>
+                  <h2 className={'font-bold ' + currentFontConfig.headerClass + ' ' + tStyle.titleText}>Moja Gablota Trofeów</h2>
+                  <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Zdobyte: {earnedTrophiesCount} z {TROPHIES.length}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowTrophiesModal(false)} className={'p-2 rounded-full shrink-0 transition-colors ' + tStyle.modalBtnBg} title="Zamknij gablotę">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto pr-1 space-y-7">
+              {[
+                { rank: 'bronze', title: 'Brązowe', text: 'text-orange-500', border: 'border-orange-600/30' },
+                { rank: 'silver', title: 'Srebrne', text: 'text-slate-300', border: 'border-slate-300/30' },
+                { rank: 'gold', title: 'Złote', text: 'text-amber-500', border: 'border-amber-500/30' },
+              ].map(group => {
+                const groupTrophies = TROPHIES.filter(trophy => trophy.rank === group.rank);
+                const groupEarnedCount = groupTrophies.filter(trophy => earnedTrophies[trophy.id]).length;
+                return (
+                  <section key={group.rank}>
+                    <div className={'flex items-center justify-between mb-3 pb-2 border-b ' + group.border}>
+                      <h3 className={'font-bold uppercase tracking-wider flex items-center gap-2 ' + group.text}>
+                        <Trophy className="w-5 h-5" /> {group.title}
+                      </h3>
+                      <span className={currentFontConfig.smallClass + ' font-mono ' + tStyle.subText}>{groupEarnedCount}/{groupTrophies.length}</span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {groupTrophies.map(trophy => {
+                        const earnedDate = earnedTrophies[trophy.id];
+                        return (
+                          <button
+                            key={trophy.id}
+                            type="button"
+                            onClick={() => setNewTrophyModal(trophy)}
+                            className={'min-h-40 p-4 rounded-2xl border text-left flex flex-col items-center justify-between gap-3 transition-transform active:scale-95 ' + tStyle.cardBg}
+                          >
+                            <div className={'w-14 h-14 rounded-full border flex items-center justify-center ' + getTrophyColors(trophy.rank, Boolean(earnedDate))}>
+                              {earnedDate ? <Trophy className="w-7 h-7" /> : <Lock className="w-6 h-6" />}
+                            </div>
+                            <div className="text-center w-full">
+                              <span className={'font-bold block leading-tight ' + currentFontConfig.smallClass + ' ' + tStyle.titleText}>{trophy.title}</span>
+                              <span className={'block mt-2 text-[11px] ' + (earnedDate ? 'text-emerald-500 font-medium' : tStyle.subText)}>
+                                {earnedDate ? `Zdobyto ${parseLocalDate(earnedDate).toLocaleDateString('pl-PL')}` : 'Do zdobycia'}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+
+            <button onClick={() => setShowTrophiesModal(false)} className="w-full mt-5 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition-transform active:scale-95">
+              Zamknij gablotę
+            </button>
+          </div>
+        </div>
+      )}
+
       {newTrophyModal && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-6 z-[500] animate-fadeIn">
           <div className="max-w-md w-full text-center">
              <div className={`mx-auto w-32 h-32 rounded-full flex items-center justify-center mb-8 shadow-2xl ${
                  earnedTrophies[newTrophyModal.id] ? 'animate-bounce ' : ''
              }${
-                 newTrophyModal.rank === 'platinum' ? 'bg-cyan-500/20 text-cyan-400 shadow-cyan-500/50 ring-4 ring-cyan-400' :
                  newTrophyModal.rank === 'gold' ? 'bg-amber-500/20 text-amber-500 shadow-amber-500/50 ring-4 ring-amber-500' :
                  newTrophyModal.rank === 'silver' ? 'bg-slate-300/20 text-slate-300 shadow-slate-300/50 ring-4 ring-slate-300' :
                  'bg-orange-700/20 text-orange-500 shadow-orange-700/50 ring-4 ring-orange-500'
@@ -3437,21 +3725,27 @@ const handleWizardNext = () => {
              </div>
              
              <h2 className="text-4xl md:text-5xl font-bold text-white mb-3 tracking-tight">
-               {earnedTrophies[newTrophyModal.id] ? `Gratulacje, ${userName}!` : 'Zablokowane'}
+               {earnedTrophies[newTrophyModal.id]
+                 ? (newTrophyModal.isNew ? `Gratulacje, ${userName}!` : 'Zdobyte trofeum')
+                 : 'Trofeum do zdobycia'}
              </h2>
              <p className={`text-lg mb-8 uppercase tracking-widest font-bold ${
-                 newTrophyModal.rank === 'platinum' ? 'text-cyan-400' :
                  newTrophyModal.rank === 'gold' ? 'text-amber-500' :
                  newTrophyModal.rank === 'silver' ? 'text-slate-300' : 'text-orange-500'
              }`}>
                 {earnedTrophies[newTrophyModal.id] 
-                  ? `Odblokowano ${newTrophyModal.rank === 'platinum' ? 'platynowe' : newTrophyModal.rank === 'gold' ? 'złote' : newTrophyModal.rank === 'silver' ? 'srebrne' : 'brązowe'} trofeum`
-                  : `${newTrophyModal.rank === 'platinum' ? 'Platynowe' : newTrophyModal.rank === 'gold' ? 'Złote' : newTrophyModal.rank === 'silver' ? 'Srebrne' : 'Brązowe'} trofeum do zdobycia`}
+                  ? `Odblokowano ${newTrophyModal.rank === 'gold' ? 'złote' : newTrophyModal.rank === 'silver' ? 'srebrne' : 'brązowe'} trofeum`
+                  : `${newTrophyModal.rank === 'gold' ? 'Złote' : newTrophyModal.rank === 'silver' ? 'Srebrne' : 'Brązowe'} trofeum`}
              </p>
              
              <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-700/50 mb-8 shadow-inner">
                 <h3 className="text-2xl font-bold text-white mb-2">{newTrophyModal.title}</h3>
                 <p className="text-slate-400 text-lg">{newTrophyModal.desc}</p>
+                {earnedTrophies[newTrophyModal.id] && (
+                  <p className="text-emerald-400 font-bold mt-4">
+                    Zdobyto: {parseLocalDate(earnedTrophies[newTrophyModal.id]).toLocaleDateString('pl-PL')}
+                  </p>
+                )}
              </div>
              
              <div className="flex flex-col gap-4">

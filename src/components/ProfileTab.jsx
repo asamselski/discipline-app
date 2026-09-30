@@ -1,11 +1,12 @@
 import { Settings, Award, ChevronRight, ShieldCheck, PieChart } from 'lucide-react';
+import SportActivitySummary from './SportActivitySummary';
 
 export default function ProfileTab({
   currentFontConfig, tStyle, userName, setUserName, userGender, setUserGender,
   levelInfo, totalPKT, earnedTrophiesCount, trophyCount, setShowSettingsModal,
   setShowTrophiesModal, setShowRanksModal, renderMonthTimeline, monthNameDisplay,
   monthTotalDoneTasks, categories, monthCategoryStats, renderDetailedStats,
-  weeklyDetailedStats, monthlyDetailedStats
+  weeklyDetailedStats, monthlyDetailedStats, workouts
 }) {
   return (
     <>
@@ -110,6 +111,8 @@ export default function ProfileTab({
         {renderDetailedStats('Ostatnie 7 dni', weeklyDetailedStats, 'text-emerald-500')}
         {renderDetailedStats(`Miesiąc: ${monthNameDisplay}`, monthlyDetailedStats, 'text-sky-500')}
       </div>
+
+      <SportActivitySummary workouts={workouts} currentFontConfig={currentFontConfig} tStyle={tStyle} />
 
       {renderMonthTimeline()}
 

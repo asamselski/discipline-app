@@ -9,6 +9,7 @@ import { formatDateStr, getAppDayString, isTaskDoneForDate, parseLocalDate, task
 import { calculateTotalPoints, getLevelInfo } from './utils/scoring';
 import AppNavigation from './components/AppNavigation';
 import FloatingActionButton from './components/FloatingActionButton';
+import DailyPlanningCard from './components/DailyPlanningCard';
 import ProfileTab from './components/ProfileTab';
 import GoalsTab from './components/GoalsTab';
 import HistoryTab from './components/HistoryTab';
@@ -18,6 +19,7 @@ import { CompleteConfirmationModal, DeleteConfirmationModal, DeleteNoteConfirmat
 import SettingsModal from './components/modals/SettingsModal';
 import GoalWizardModal from './components/modals/GoalWizardModal';
 import TaskModals from './components/modals/TaskModals';
+import DayClosureModal from './components/modals/DayClosureModal';
 import {
   GOOGLE_API_KEY,
   GOOGLE_CLIENT_ID,
@@ -230,9 +232,27 @@ export default function App() {
 
   const [tasks, setTasks] = useState(() => {
     const savedTasks = localStorage.getItem('discipline_tasks_unified');
-    if (savedTasks) return JSON.parse(savedTasks);
+    if (savedTasks) {
+      return JSON.parse(savedTasks).map((task) => task.isPriority && !task.priorityDate
+        ? { ...task, priorityDate: getAppDayString(resetTime) }
+        : task);
+    }
     return [];
   });
+
+  const [dailyPlans, setDailyPlans] = useState(() => {
+    const saved = localStorage.getItem('discipline_daily_plans');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [dailyReviews, setDailyReviews] = useState(() => {
+    const saved = localStorage.getItem('discipline_daily_reviews');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [showDailyPlanning, setShowDailyPlanning] = useState(false);
+  const [showCloseDayModal, setShowCloseDayModal] = useState(false);
+
+  useEffect(() => localStorage.setItem('discipline_daily_plans', JSON.stringify(dailyPlans)), [dailyPlans]);
+  useEffect(() => localStorage.setItem('discipline_daily_reviews', JSON.stringify(dailyReviews)), [dailyReviews]);
 
   // Niewykonane zadania jednorazowe automatycznie przechodzą na bieżący dzień.
   useEffect(() => {
@@ -1191,6 +1211,15 @@ const handleMultiWorkoutSubmit = (e) => {
     if (toWizard) {
        setWizardData({...wizardData, title: item.text});
        openGoalWizard();
+    } else if (item.sourceTask) {
+       setTasks((current) => [...current, {
+         ...item.sourceTask,
+         dueDate: todayStr,
+         isCompleted: false,
+         completedAt: null,
+         isPriority: false,
+         priorityDate: null,
+       }]);
     } else {
        setNewTaskTitle(item.text);
        setShowAddTaskModal(true);
@@ -1655,19 +1684,161 @@ const handleWizardNext = () => {
     return exists ? t : { ...t, category: 'Ogólne' };
   });
 
-  const priorityTasks = allTodayTasks.filter((task) => task.isPriority).slice(0, 3);
+  const priorityTasks = allTodayTasks.filter((task) => task.isPriority && task.priorityDate === todayStr).slice(0, 3);
   const priorityTaskIds = new Set(priorityTasks.map((task) => task.id));
   const regularTodayTasks = allTodayTasks.filter((task) => !priorityTaskIds.has(task.id));
   const regularCompletedTodayCount = regularTodayTasks.filter((task) => isTaskDoneForDate(task, todayStr)).length;
+  const todayPlan = dailyPlans[todayStr] || {};
+  const todayReview = dailyReviews[todayStr] || null;
+  const isTodayClosed = Boolean(todayReview?.closedAt);
+  const shouldShowDailyPlanning = allTodayTasks.length > 0 && (
+    showDailyPlanning || (!todayPlan.plannedAt && !todayPlan.dismissedAt && !todayPlan.closedAt)
+  );
 
   const toggleTaskPriority = (taskId) => {
     const selectedTask = tasks.find((task) => task.id === taskId);
-    if (!selectedTask?.isPriority && priorityTasks.length >= 3) {
+    const isPriorityToday = selectedTask?.isPriority && selectedTask.priorityDate === todayStr;
+    if (!isPriorityToday && priorityTasks.length >= 3) {
       alert('Możesz wybrać maksymalnie 3 najważniejsze zadania na dziś.');
       return;
     }
     setTasks((currentTasks) => currentTasks.map((task) =>
-      task.id === taskId ? { ...task, isPriority: !task.isPriority } : task));
+      task.id === taskId
+        ? { ...task, isPriority: !isPriorityToday, priorityDate: !isPriorityToday ? todayStr : null }
+        : task));
+  };
+
+  const confirmDailyPlan = () => {
+    setDailyPlans((current) => ({
+      ...current,
+      [todayStr]: {
+        ...current[todayStr],
+        plannedAt: new Date().toISOString(),
+        dismissedAt: null,
+        priorityTaskIds: priorityTasks.map((task) => task.id),
+      },
+    }));
+    setShowDailyPlanning(false);
+  };
+
+  const dismissDailyPlan = () => {
+    setDailyPlans((current) => ({
+      ...current,
+      [todayStr]: { ...current[todayStr], dismissedAt: new Date().toISOString() },
+    }));
+    setShowDailyPlanning(false);
+  };
+
+  const resolveTaskAtDayClosure = (task, resolution) => {
+    const historyEntry = {
+      date: todayStr,
+      action: resolution.action,
+      reason: resolution.reason || '',
+      toDate: resolution.toDate || null,
+    };
+
+    if (resolution.action === 'done') {
+      const targetGoal = task.goalId ? goals.find((goal) => goal.id === task.goalId) : null;
+      const addsGoalProgress = Boolean(targetGoal && !targetGoal.isDaily);
+      if (addsGoalProgress) {
+          setGoals((current) => current.map((goal) => goal.id === targetGoal.id
+            ? { ...goal, currentPage: Math.min(goal.target, (goal.currentPage || 0) + 1) }
+            : goal));
+      }
+      setTasks((current) => current.map((currentTask) => {
+        if (currentTask.id !== task.id) return currentTask;
+        const goalProgressHistory = { ...(currentTask.goalProgressHistory || {}) };
+        if (addsGoalProgress) goalProgressHistory[todayStr] = 1;
+        if (currentTask.repeat && currentTask.repeat !== 'once') {
+          return {
+            ...currentTask,
+            completedDates: { ...(currentTask.completedDates || {}), [todayStr]: true },
+            goalProgressHistory,
+            isRunning: false,
+          };
+        }
+        return {
+          ...currentTask,
+          isCompleted: true,
+          completedAt: todayStr,
+          isPriority: false,
+          priorityDate: null,
+          goalProgressHistory,
+          isRunning: false,
+        };
+      }));
+      return;
+    }
+
+    if (resolution.action === 'tomorrow' || resolution.action === 'date') {
+      setTasks((current) => current.map((currentTask) => currentTask.id === task.id
+        ? {
+            ...currentTask,
+            dueDate: resolution.toDate,
+            carriedFrom: currentTask.carriedFrom || todayStr,
+            carriedCount: (currentTask.carriedCount || 0) + 1,
+            isPriority: false,
+            priorityDate: null,
+            postponementHistory: [...(currentTask.postponementHistory || []), historyEntry],
+          }
+        : currentTask));
+      return;
+    }
+
+    if (resolution.action === 'waiting') {
+      setInbox((current) => [{
+        id: Date.now(),
+        text: task.title,
+        createdAt: todayStr,
+        sourceTask: {
+          ...task,
+          isPriority: false,
+          priorityDate: null,
+          isRunning: false,
+          postponementHistory: [...(task.postponementHistory || []), historyEntry],
+        },
+      }, ...current]);
+      setTasks((current) => current.filter((currentTask) => currentTask.id !== task.id));
+      return;
+    }
+
+    if (resolution.action === 'deleted') {
+      setTasks((current) => current.filter((currentTask) => currentTask.id !== task.id));
+      return;
+    }
+
+    if (resolution.action === 'skipped') {
+      setTasks((current) => current.map((currentTask) => currentTask.id === task.id
+        ? { ...currentTask, dayClosureHistory: [...(currentTask.dayClosureHistory || []), historyEntry] }
+        : currentTask));
+    }
+  };
+
+  const finishDayClosure = ({ results, reflection, summary }) => {
+    const closedAt = new Date().toISOString();
+    setDailyReviews((current) => ({
+      ...current,
+      [todayStr]: { closedAt, reflection, resolutions: results, summary },
+    }));
+    setDailyPlans((current) => ({
+      ...current,
+      [todayStr]: {
+        ...current[todayStr],
+        closedAt,
+        priorityTaskIds: current[todayStr]?.priorityTaskIds || priorityTasks.map((task) => task.id),
+      },
+    }));
+    setShowCloseDayModal(false);
+  };
+
+  const pauseDayClosure = ({ results, reflection, summary }) => {
+    if (results.length > 0 || reflection) {
+      setDailyReviews((current) => ({
+        ...current,
+        [todayStr]: { ...current[todayStr], reflection, resolutions: results, summary, draft: true },
+      }));
+    }
+    setShowCloseDayModal(false);
   };
 
   const upcomingTasks = tasks.filter(t => {
@@ -2041,6 +2212,36 @@ const handleWizardNext = () => {
     return { pts, tCount, wCount };
   };
 
+  const getWeeklyReasonSummary = () => {
+    const start = parseLocalDate(todayStr);
+    start.setDate(start.getDate() - 6);
+    const startStr = formatDateStr(start);
+    const counts = {};
+
+    Object.entries(dailyReviews).forEach(([date, review]) => {
+      if (date < startStr || date > todayStr || !review.closedAt) return;
+      (review.resolutions || []).forEach((resolution) => {
+        if (!resolution.reason) return;
+        counts[resolution.reason] = (counts[resolution.reason] || 0) + 1;
+      });
+    });
+
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const recordedReasons = entries.reduce((sum, [, count]) => sum + count, 0);
+    if (recordedReasons < 3) return null;
+    const [reason, count] = entries[0];
+    const suggestions = {
+      'Zaplanowałem za dużo': 'Spróbuj jutro wybrać mniej zadań i ograniczyć priorytety do trzech.',
+      'Brak czasu': 'Nadaj najważniejszemu zadaniu konkretną porę albo skróć je do pierwszego kroku.',
+      'Brak energii': 'Najtrudniejsze zadanie zaplanuj na porę, w której zwykle masz najwięcej energii.',
+      'Zapomniałem': 'Ustaw przypomnienie dla najważniejszego zadania.',
+      'Zadanie było za trudne lub niejasne': 'Rozbij trudne zadanie na krok, który zajmie maksymalnie 10 minut.',
+      'Przeszkoda zewnętrzna': 'Zostaw w planie więcej miejsca na nieprzewidziane sytuacje.',
+      'Zadanie straciło znaczenie': 'Regularnie usuwaj zadania, które nie wspierają już żadnego celu.',
+    };
+    return { reason, count, suggestion: suggestions[reason] };
+  };
+
   const getDetailedStats = (startDate, endDate) => {
     let plannedTasks = 0;
     let completedTasks = 0;
@@ -2124,7 +2325,7 @@ const handleWizardNext = () => {
     confirmDeleteModal || confirmCompleteModal || showDeleteNoteConfirm ||
     (quoteModal.show && quoteModal.data) || showRanksModal ||
     showWeeklyReviewModal || showBooksModal || showAddBookModal ||
-    showResetConfirmModal || showYesterdayModal
+    showResetConfirmModal || showYesterdayModal || showCloseDayModal
   );
 
   return (
@@ -2138,7 +2339,7 @@ const handleWizardNext = () => {
               <p className={currentFontConfig.smallClass + ' md:text-base ' + tStyle.subText}>Dyscyplina buduje wolność</p>
             </div>
 
-          <  div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <button onClick={handleOpenYesterdayReport} className={'p-3 md:p-3.5 rounded-full border text-blue-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title="Raport z wczoraj">
                 <History className="w-5 h-5 md:w-6 md:h-6" />
               </button>
@@ -2149,6 +2350,18 @@ const handleWizardNext = () => {
               <button onClick={() => setShowAllQuotesModal(true)} className={'p-3 md:p-3.5 rounded-full border text-amber-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title="Cytaty"><Quote className="w-5 h-5 md:w-6 md:h-6" /></button>
             </div>
           </header>
+
+          {shouldShowDailyPlanning && (
+            <DailyPlanningCard
+              tasks={allTodayTasks}
+              selectedTaskIds={priorityTaskIds}
+              onToggleTask={toggleTaskPriority}
+              onConfirm={confirmDailyPlan}
+              onDismiss={dismissDailyPlan}
+              currentFontConfig={currentFontConfig}
+              tStyle={tStyle}
+            />
+          )}
 
           <div className="grid grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8">
             <div className={'p-5 md:p-6 rounded-3xl border flex flex-col justify-between shadow-sm ' + tStyle.cardBg}>
@@ -2176,7 +2389,10 @@ const handleWizardNext = () => {
               <h2 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider text-amber-500 flex items-center gap-2'}>
                 <Star className="w-5 h-5 fill-amber-500" /> 3 najważniejsze zadania
               </h2>
-              <span className={currentFontConfig.smallClass + ' font-bold text-amber-500'}>{priorityTasks.length}/3</span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowDailyPlanning(true)} className={currentFontConfig.smallClass + ' font-bold text-amber-500 hover:underline'}>Zmień plan</button>
+                <span className={currentFontConfig.smallClass + ' font-bold text-amber-500'}>{priorityTasks.length}/3</span>
+              </div>
             </div>
             {priorityTasks.length === 0 ? (
               <p className={currentFontConfig.smallClass + ' py-2 ' + tStyle.subText}>W menu zadania wybierz „Ustaw jako priorytet”.</p>
@@ -2333,7 +2549,7 @@ const handleWizardNext = () => {
                                        }}
                                        className={"flex items-center gap-2 px-3 py-2.5 hover:bg-amber-500/10 transition-colors " + tStyle.subText + " hover:text-amber-500 text-sm font-medium"}
                                      >
-                                       <Star className={'w-4 h-4 ' + (task.isPriority ? 'fill-amber-500 text-amber-500' : '')} /> {task.isPriority ? 'Usuń z priorytetów' : 'Ustaw jako priorytet'}
+                                       <Star className={'w-4 h-4 ' + (task.isPriority && task.priorityDate === todayStr ? 'fill-amber-500 text-amber-500' : '')} /> {task.isPriority && task.priorityDate === todayStr ? 'Usuń z priorytetów' : 'Ustaw jako priorytet'}
                                      </button>
                                      <div className="h-px bg-slate-500/20 w-full" />
                                      <button 
@@ -2484,6 +2700,24 @@ const handleWizardNext = () => {
 
           </div>
 
+          <section className={'mt-6 p-5 rounded-3xl border shadow-sm ' + (isTodayClosed ? 'bg-emerald-500/10 border-emerald-500/30' : tStyle.cardBg)}>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + (todayReview ? 'text-emerald-500' : tStyle.titleText)}>
+                  {isTodayClosed ? 'Dzień zamknięty ✓' : 'Gotowy zakończyć dzień?'}
+                </h2>
+                <p className={currentFontConfig.smallClass + ' mt-1 ' + tStyle.subText}>
+                  {isTodayClosed
+                    ? (todayReview.reflection || 'Podsumowanie i decyzje zostały zapisane.')
+                    : 'Uporządkuj niewykonane zadania i zapisz jedno zdanie refleksji.'}
+                </p>
+              </div>
+              <button onClick={() => setShowCloseDayModal(true)} className={'shrink-0 px-4 py-3 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' ' + (todayReview ? tStyle.modalBtnBg : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950')}>
+                {isTodayClosed ? 'Edytuj' : todayReview?.draft ? 'Kontynuuj' : 'Zamknij dzień'}
+              </button>
+            </div>
+          </section>
+
           <FloatingActionButton
             isFabOpen={isFabOpen}
             setIsFabOpen={setIsFabOpen}
@@ -2537,6 +2771,7 @@ const handleWizardNext = () => {
           setShowDeleteNoteConfirm={setShowDeleteNoteConfirm}
           textareaRef={textareaRef}
           saveNote={saveNote}
+          dayReview={dailyReviews[selectedDate] || null}
         />
       )}
 
@@ -2563,6 +2798,7 @@ const handleWizardNext = () => {
           renderDetailedStats={renderDetailedStats}
           weeklyDetailedStats={weeklyDetailedStats}
           monthlyDetailedStats={monthlyDetailedStats}
+          workouts={workouts}
         />
       )}
 
@@ -3076,6 +3312,27 @@ const handleWizardNext = () => {
         </div>
       )}
 
+      {showCloseDayModal && (
+        <DayClosureModal
+          date={todayStr}
+          tasks={isTodayClosed ? [] : allTodayTasks
+            .filter((task) => !isTaskDoneForDate(task, todayStr))
+            .map((task) => ({ ...task, closurePoints: (task.pkt || 20) + (checkStreakBonus(task.id, todayStr) ? 10 : 0) }))}
+          completedCount={todayReview?.summary?.completed ?? completedTodayCount}
+          totalCount={todayReview?.summary?.total ?? allTodayTasks.length}
+          points={todayReview?.summary?.points ?? earnedPKTToday}
+          priorityCompletedCount={todayReview?.summary?.priorityCompleted ?? priorityTasks.filter((task) => isTaskDoneForDate(task, todayStr)).length}
+          priorityCount={todayReview?.summary?.priorityTotal ?? priorityTasks.length}
+          initialReflection={todayReview?.reflection || ''}
+          existingResults={todayReview?.resolutions || []}
+          onResolveTask={resolveTaskAtDayClosure}
+          onFinish={finishDayClosure}
+          onClose={pauseDayClosure}
+          currentFontConfig={currentFontConfig}
+          tStyle={tStyle}
+        />
+      )}
+
       <DeleteConfirmationModal
         modal={confirmDeleteModal}
         tasks={tasks}
@@ -3195,6 +3452,17 @@ const handleWizardNext = () => {
                     )
                  })()}
               </div>
+
+              {(() => {
+                const insight = getWeeklyReasonSummary();
+                if (!insight) return null;
+                return (
+                  <div className="bg-sky-500/10 border border-sky-500/30 p-4 rounded-2xl">
+                    <p className={currentFontConfig.smallClass + ' font-bold text-sky-500 mb-1'}>Najczęstsza przeszkoda: {insight.reason} ({insight.count}×)</p>
+                    <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>{insight.suggestion}</p>
+                  </div>
+                );
+              })()}
 
               <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl">
                  <p className="text-sm font-bold text-amber-500 italic text-center">

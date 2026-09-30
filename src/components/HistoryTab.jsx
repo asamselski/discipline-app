@@ -4,7 +4,7 @@ import { isTaskDoneForDate } from '../utils/date';
 export default function HistoryTab({
   currentFontConfig, tStyle, renderCalendar, selectedDate, selectedDayTasks,
   selectedDayWorkouts, isPastDay, isFutureDay, currentNote, setShowDeleteNoteConfirm,
-  textareaRef, saveNote
+  textareaRef, saveNote, dayReview
 }) {
   return (
     <>
@@ -75,6 +75,13 @@ export default function HistoryTab({
                 <button onClick={() => setShowDeleteNoteConfirm(true)} className={currentFontConfig.smallClass + ' text-red-500 hover:text-red-400 font-semibold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/10'}><Trash2 className="w-3.5 h-3.5" /> Usuń</button>
               )}
             </div>
+
+            {dayReview?.reflection && (
+              <div className="mb-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                <span className={currentFontConfig.smallClass + ' font-bold text-emerald-500 block mb-1'}>Refleksja z zamknięcia dnia</span>
+                <p className={currentFontConfig.smallClass + ' italic ' + tStyle.titleText}>{dayReview.reflection}</p>
+              </div>
+            )}
 
             <textarea
               ref={textareaRef}

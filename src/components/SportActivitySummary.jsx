@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Activity, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDateStr } from '../utils/date';
+import { useI18n } from '../i18n-context';
 
 const SPORT_TYPES = {
   walk_km: 'Marsz',
@@ -22,9 +23,8 @@ const startOfWeek = (date) => {
   return result;
 };
 
-const formatRange = (start, end) => `${start.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })} – ${end.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
-
 export default function SportActivitySummary({ workouts, currentFontConfig, tStyle }) {
+  const { locale, t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState('week');
   const [offset, setOffset] = useState(0);
@@ -36,12 +36,12 @@ export default function SportActivitySummary({ workouts, currentFontConfig, tSty
       start.setDate(start.getDate() + offset * 7);
       const end = new Date(start);
       end.setDate(end.getDate() + 6);
-      return { start, end, label: formatRange(start, end) };
+      return { start, end, label: `${start.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' })} – ${end.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' })}` };
     }
     const start = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
-    return { start, end, label: start.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' }) };
-  }, [mode, offset]);
+    return { start, end, label: start.toLocaleDateString(locale, { month: 'long', year: 'numeric' }) };
+  }, [locale, mode, offset]);
 
   const activities = useMemo(() => {
     const start = formatDateStr(period.start);
@@ -65,12 +65,12 @@ export default function SportActivitySummary({ workouts, currentFontConfig, tSty
 
   return (
     <section className={'rounded-3xl border shadow-sm mb-6 overflow-hidden ' + tStyle.cardBg}>
-      <button onClick={() => setExpanded((value) => !value)} className="w-full p-5 md:p-6 flex items-center justify-between gap-4 text-left">
+      <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} className="w-full p-5 md:p-6 flex items-center justify-between gap-4 text-left">
         <div className="flex items-center gap-3">
           <div className="p-3 rounded-2xl bg-orange-500/15 text-orange-500 border border-orange-500/30"><Activity className="w-6 h-6" /></div>
           <div>
-            <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>Podsumowanie sportu</h3>
-            <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Tylko wykonane aktywności</p>
+            <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>{t('Podsumowanie sportu')}</h3>
+            <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>{t('Tylko wykonane aktywności')}</p>
           </div>
         </div>
         <ChevronDown className={'w-5 h-5 transition-transform ' + tStyle.subText + (expanded ? ' rotate-180' : '')} />
@@ -79,14 +79,14 @@ export default function SportActivitySummary({ workouts, currentFontConfig, tSty
       {expanded && (
         <div className="px-5 md:px-6 pb-6 border-t border-slate-500/20 animate-fadeIn">
           <div className="flex gap-2 my-4">
-            <button onClick={() => changeMode('week')} className={'flex-1 py-2.5 rounded-xl border font-bold ' + currentFontConfig.smallClass + ' ' + (mode === 'week' ? tStyle.optSelected : tStyle.optUnselected)}>Tydzień</button>
-            <button onClick={() => changeMode('month')} className={'flex-1 py-2.5 rounded-xl border font-bold ' + currentFontConfig.smallClass + ' ' + (mode === 'month' ? tStyle.optSelected : tStyle.optUnselected)}>Miesiąc</button>
+            <button onClick={() => changeMode('week')} className={'flex-1 py-2.5 rounded-xl border font-bold ' + currentFontConfig.smallClass + ' ' + (mode === 'week' ? tStyle.optSelected : tStyle.optUnselected)}>{t('Tydzień')}</button>
+            <button onClick={() => changeMode('month')} className={'flex-1 py-2.5 rounded-xl border font-bold ' + currentFontConfig.smallClass + ' ' + (mode === 'month' ? tStyle.optSelected : tStyle.optUnselected)}>{t('Miesiąc')}</button>
           </div>
 
           <div className="flex items-center justify-between gap-3 mb-4">
-            <button onClick={() => setOffset((value) => value - 1)} className={'p-2.5 rounded-xl ' + tStyle.modalBtnBg} title="Poprzedni okres"><ChevronLeft className="w-5 h-5" /></button>
+            <button onClick={() => setOffset((value) => value - 1)} className={'p-2.5 rounded-xl ' + tStyle.modalBtnBg} title={t('Poprzedni okres')}><ChevronLeft className="w-5 h-5" /></button>
             <strong className={'capitalize text-center ' + currentFontConfig.smallClass + ' ' + tStyle.titleText}>{period.label}</strong>
-            <button disabled={offset >= 0} onClick={() => setOffset((value) => Math.min(0, value + 1))} className={'p-2.5 rounded-xl disabled:opacity-30 ' + tStyle.modalBtnBg} title="Następny okres"><ChevronRight className="w-5 h-5" /></button>
+            <button disabled={offset >= 0} onClick={() => setOffset((value) => Math.min(0, value + 1))} className={'p-2.5 rounded-xl disabled:opacity-30 ' + tStyle.modalBtnBg} title={t('Następny okres')}><ChevronRight className="w-5 h-5" /></button>
           </div>
 
           {activities.length > 0 ? (
@@ -94,15 +94,15 @@ export default function SportActivitySummary({ workouts, currentFontConfig, tSty
               {activities.map((activity) => (
                 <div key={`${activity.type}-${activity.unit}`} className="p-3.5 rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-between gap-3">
                   <div>
-                    <strong className={tStyle.titleText}>{activity.label}</strong>
-                    <span className={currentFontConfig.smallClass + ' block mt-0.5 ' + tStyle.subText}>{activity.count} {activity.count === 1 ? 'aktywność' : 'aktywności'}</span>
+                    <strong className={tStyle.titleText}>{t(activity.label)}</strong>
+                    <span className={currentFontConfig.smallClass + ' block mt-0.5 ' + tStyle.subText}>{t(activity.count === 1 ? '{{count}} aktywność' : '{{count}} aktywności', { count: activity.count })}</span>
                   </div>
-                  <strong className="text-orange-500 font-mono">{Number(activity.amount.toFixed(2))} {activity.unit}</strong>
+              <strong className="text-orange-500 font-mono">{Number(activity.amount.toFixed(2))} {t(activity.unit)}</strong>
                 </div>
               ))}
             </div>
           ) : (
-            <p className={currentFontConfig.smallClass + ' text-center py-6 ' + tStyle.subText}>Brak aktywności sportowych w tym okresie.</p>
+            <p className={currentFontConfig.smallClass + ' text-center py-6 ' + tStyle.subText}>{t('Brak aktywności sportowych w tym okresie.')}</p>
           )}
         </div>
       )}

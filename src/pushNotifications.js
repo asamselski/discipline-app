@@ -72,7 +72,7 @@ const taskAppliesToDate = (task, dateString) => {
   return false;
 };
 
-export const buildPushReminders = (tasks, daysAhead = 30) => {
+export const buildPushReminders = (tasks, daysAhead = 30, language = 'pl') => {
   const reminders = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -95,8 +95,8 @@ export const buildPushReminders = (tasks, daysAhead = 30) => {
       reminders.push({
         id: `task-${task.id}-${dateString}`,
         scheduledAt: scheduled.toISOString(),
-        title: 'Przypomnienie o zadaniu! ⚡',
-        body: `Czas na wykonanie: "${task.title}"`,
+        title: language === 'en' ? 'Task reminder! ⚡' : 'Przypomnienie o zadaniu! ⚡',
+        body: language === 'en' ? `Time to do: "${task.title}"` : `Czas na wykonanie: "${task.title}"`,
         tag: `task-${task.id}-${dateString}`,
       });
     });
@@ -107,8 +107,8 @@ export const buildPushReminders = (tasks, daysAhead = 30) => {
       reminders.push({
         id: `daily-plan-${dateString}`,
         scheduledAt: dailyPlan.toISOString(),
-        title: 'Czas zaplanować jutro! 🗓️',
-        body: 'Przejrzyj swoje zadania i zaplanuj kolejny dzień.',
+        title: language === 'en' ? 'Time to plan tomorrow! 🗓️' : 'Czas zaplanować jutro! 🗓️',
+        body: language === 'en' ? 'Review your tasks and plan the next day.' : 'Przejrzyj swoje zadania i zaplanuj kolejny dzień.',
         tag: `daily-plan-${dateString}`,
       });
     }
@@ -120,8 +120,8 @@ export const buildPushReminders = (tasks, daysAhead = 30) => {
         reminders.push({
           id: `weekly-review-${dateString}`,
           scheduledAt: weeklyReview.toISOString(),
-          title: 'Tygodniowy Przegląd! 🏆',
-          body: 'Czas podsumować ubiegły tydzień i zaplanować nowe zwycięstwa.',
+          title: language === 'en' ? 'Weekly Review! 🏆' : 'Tygodniowy Przegląd! 🏆',
+          body: language === 'en' ? 'Review the past week and plan your next wins.' : 'Czas podsumować ubiegły tydzień i zaplanować nowe zwycięstwa.',
           tag: `weekly-review-${dateString}`,
         });
       }
@@ -137,7 +137,7 @@ export const getPushSubscriptionStatus = async () => {
   return (await registration.pushManager.getSubscription()) ? 'enabled' : 'disabled';
 };
 
-export const enablePushNotifications = async (tasks) => {
+export const enablePushNotifications = async (tasks, language = 'pl') => {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     throw new Error('To urządzenie nie obsługuje Web Push.');
   }
@@ -158,18 +158,18 @@ export const enablePushNotifications = async (tasks) => {
     method: 'POST',
     body: JSON.stringify({ clientId, subscription: subscription.toJSON() }),
   });
-  await syncPushReminders(tasks);
+  await syncPushReminders(tasks, language);
   return true;
 };
 
-export const syncPushReminders = async (tasks) => {
+export const syncPushReminders = async (tasks, language = 'pl') => {
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription || !getPushApiUrl()) return false;
 
   await apiRequest('/reminders', {
     method: 'PUT',
-    body: JSON.stringify({ clientId: getClientId(), reminders: buildPushReminders(tasks) }),
+    body: JSON.stringify({ clientId: getClientId(), reminders: buildPushReminders(tasks, 30, language) }),
   });
   return true;
 };

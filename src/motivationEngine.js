@@ -9,6 +9,10 @@ export const coachingRules = [
       "Poranek definiuje resztę dnia. Wybierz jedno małe zadanie, wygeneruj pierwsze punkty i wpraw maszynę w ruch.",
       "Słońce już wstało, a Ty masz zero na koncie. Przypomnij sobie swoje DLACZEGO i podejmij zmasowane działanie!",
       "Czas ucieka. Nie negocjuj ze sobą. Reguła 3 sekund: raz, dwa, trzy – idziesz robić pierwsze zadanie!"
+    ],
+    messagesEn: [
+      "The day has begun and you are standing still. What is your most important result for today? Act on it now.",
+      "Your morning shapes the rest of your day. Choose one small task, earn your first points and build momentum."
     ]
   },
   {
@@ -19,6 +23,10 @@ export const coachingRules = [
       "100% skuteczności. Tak wygląda dzień człowieka, który nie przyjmuje wymówek. Jesteś maszyną!",
       "Czysta karta, wszystkie cele osiągnięte. Uczcij to zwycięstwo, a potem zaplanuj jutro z jeszcze wyższym standardem.",
       "Wiedza to potencjał, egzekucja to potęga. Dziś pokazałeś potęgę. Świętuj i szykuj się na kolejny poziom."
+    ],
+    messagesEn: [
+      "Total domination. You completed every item on today's list. Protect that momentum.",
+      "One hundred percent complete. Celebrate the win, then plan tomorrow with an even higher standard."
     ]
   },
   {
@@ -29,6 +37,10 @@ export const coachingRules = [
       "Zero punktów. Ból, który teraz czujesz, to sygnał. Użyj go, by jutro wstać z innym nastawieniem.", //[cite: 1]
       "Koniec dnia, a Ty oddałeś go walkowerem. Zero punktów to decyzja, którą podjąłeś. Jutro podnosisz standard!",
       "Twój standard na dziś był żałosny. Zanim pójdziesz spać, zdefiniuj swój najważniejszy Cel na jutro. Zero litości!"
+    ],
+    messagesEn: [
+      "The day is ending with zero points. Use that signal to begin differently tomorrow morning.",
+      "Zero points is feedback, not a verdict. Define tomorrow's most important goal before you go to sleep."
     ]
   },
   {
@@ -39,6 +51,10 @@ export const coachingRules = [
       "Czas ucieka, a Ty działasz na 20% możliwości. Przestań być zajęty byciem zajętym i skończ to, co zacząłeś.",
       "Zostało Ci mnóstwo zadań. Przestań analizować. Wybierz JEDNĄ rzecz, zablokuj rozpraszacze i zrób ją do końca.",
       "Odkładanie na później to złodziej marzeń. Zamknij wymówki, otwórz cel i uderz w niego z pełną agresją!"
+    ],
+    messagesEn: [
+      "It is already afternoon and you have barely touched your list. Choose one important task and begin now.",
+      "Stop analysing. Block distractions and finish one thing from start to finish."
     ]
   },
   {
@@ -49,6 +65,10 @@ export const coachingRules = [
       "Mistrzowska konsekwencja! Twoja praca procentuje. Zaplanuj jutro z tą samą energią.", //[cite: 1]
       "Passa trwa! Jesteś w stanie flow. Pamiętaj jednak: mistrzowie nigdy nie osiadają na laurach. Ciśnij dalej!",
       "Zobacz, jak nawyk zmienia tożsamość. Jesteś teraz człowiekiem, który dowozi każdego dnia. Utrzymaj ten ogień!"
+    ],
+    messagesEn: [
+      "Five strong days in a row. You are building real momentum—keep going.",
+      "Masterful consistency. Plan tomorrow with the same energy and protect your streak."
     ]
   },
   {
@@ -102,7 +122,7 @@ export const coachingRules = [
   }
 ];
 
-export const getCoachMessage = (stats) => { //[cite: 1]
+export const getCoachMessage = (stats, language = 'pl') => { //[cite: 1]
   // Upewniamy się, że stats posiada wszystkie potrzebne zmienne zabezpieczając przed "undefined"
   const safeStats = {
     hour: stats.hour || new Date().getHours(),
@@ -119,8 +139,9 @@ export const getCoachMessage = (stats) => { //[cite: 1]
   const matchedRule = coachingRules.find(rule => rule.condition(safeStats)); //[cite: 1]
   
   // Losujemy jedną wiadomość z dopasowanej puli[cite: 1]
-  const randomIndex = Math.floor(Math.random() * matchedRule.messages.length); //[cite: 1]
-  return matchedRule.messages[randomIndex]; //[cite: 1]
+  const messages = language === 'en' && matchedRule.messagesEn ? matchedRule.messagesEn : matchedRule.messages;
+  const randomIndex = Math.floor(Math.random() * messages.length); //[cite: 1]
+  return messages[randomIndex]; //[cite: 1]
 };
 
 
@@ -131,6 +152,10 @@ export const yesterdayCoachingRules = [
     messages: [
       "Patrzę na Twoje wczorajsze wyniki i widzę czyste alibi. Oddałeś ten dzień walkowerem! Przeszłość nie równa się przyszłości, ale tylko jeśli TERAZ podejmiesz decyzję o zmianie. Jaki jest Twój najważniejszy Rezultat na dzisiaj?",
       "Wczoraj zawiodłeś najważniejszą osobę – samego siebie. Boli? Użyj tego bólu! Przekuj to rozczarowanie w potężny Massive Action Plan na dzisiaj. Odbijamy się od dna!"
+    ],
+    messagesEn: [
+      "Yesterday's results look like an excuse. You gave the day away. The past does not define the future if you decide to change now. What is your most important result for today?",
+      "Yesterday you let yourself down. Use that disappointment to build a strong action plan for today. Time to bounce back."
     ]
   },
   {
@@ -139,6 +164,10 @@ export const yesterdayCoachingRules = [
     messages: [
       "Zrobiłeś wczoraj wynik, ale zignorowałeś absolutny fundament – swoje ciało. Energia to waluta sukcesu! Co Ci po punktach, jeśli zniszczysz maszynę, która je zdobywa? Dzisiaj kategoria 'Zdrowie' to Twój priorytet numer jeden!",
       "Sukces zawodowy czy edukacyjny bez zdrowia to porażka. Wczoraj ominąłeś trening. Dzisiaj nie ma wymówek – zrób cokolwiek, by wpompować tlen do krwi i zmienić swoją fizjologię!"
+    ],
+    messagesEn: [
+      "You achieved results yesterday but ignored the foundation: your body. Energy is the currency of success. Make Health your top priority today.",
+      "Professional or learning success without health is incomplete. You skipped movement yesterday; today, do something that changes your physiology and restores your energy."
     ]
   },
   {
@@ -146,6 +175,9 @@ export const yesterdayCoachingRules = [
     condition: (stats) => stats.healthDone >= 2 && (stats.doneTasks - stats.healthDone) <= 1,
     messages: [
       "Ciało wczoraj pracowało, maszyna jest naoliwiona, ale zawiodłeś w innych obszarach! Użyj tej wygenerowanej, fizycznej energii, żeby dzisiaj zdominować zadania umysłowe i zawodowe. Przenieś tę moc dalej!"
+    ],
+    messagesEn: [
+      "Your body worked yesterday and the machine is ready, but other areas fell behind. Use that physical energy to tackle your mental and professional tasks today."
     ]
   },
   {
@@ -154,6 +186,10 @@ export const yesterdayCoachingRules = [
     messages: [
       "Wczoraj udowodniłeś, na co Cię stać! Zdominowałeś zadania i zadbałeś o ciało. To się nazywa życie na własnych warunkach. Skopiuj ten stan umysłu na dzisiaj i podnieś poprzeczkę jeszcze wyżej!",
       "Niesamowita egzekucja. Zostawiłeś wczoraj krew i pot na wirtualnym parkiecie. Uczcij to zwycięstwo przez sekundę, a potem... wracamy do budowania imperium. Jaki jest cel na dziś?"
+    ],
+    messagesEn: [
+      "Yesterday you proved what you can do. You dominated your tasks and took care of your body. Carry that mindset into today and raise the bar again.",
+      "Excellent execution yesterday. Take a moment to appreciate the win, then return to building. What is today's goal?"
     ]
   },
   {
@@ -162,11 +198,15 @@ export const yesterdayCoachingRules = [
     messages: [
       "Wczoraj zrobiłeś krok do przodu, ale wiesz równie dobrze jak ja, że stać Cię na więcej. Przestań grać bezpiecznie. Zidentyfikuj dzisiaj jedną rzecz, która wygeneruje największy Rezultat i ruszaj do boju!",
       "Przeanalizuj wczorajsze statystyki. Co zadziałało? Co Cię rozproszyło? Wyciągnij lekcję, odetnij to co było i zaplanuj dzisiejszy Massive Action Plan."
+    ],
+    messagesEn: [
+      "You moved forward yesterday, but you know you can do more. Identify the one action that will create the biggest result today and begin.",
+      "Review yesterday: what worked and what distracted you? Take the lesson, leave the rest behind and create today's action plan."
     ]
   }
 ];
 
-export const getYesterdayReview = (yesterdayStats) => {
+export const getYesterdayReview = (yesterdayStats, language = 'pl') => {
   // Bezpieczne wartości domyślne na wypadek braku danych
   const safeStats = {
     points: yesterdayStats.points || 0,
@@ -177,6 +217,7 @@ export const getYesterdayReview = (yesterdayStats) => {
   };
 
   const matchedRule = yesterdayCoachingRules.find(rule => rule.condition(safeStats));
-  const randomIndex = Math.floor(Math.random() * matchedRule.messages.length);
-  return matchedRule.messages[randomIndex];
+  const messages = language === 'en' ? matchedRule.messagesEn : matchedRule.messages;
+  const randomIndex = Math.floor(Math.random() * messages.length);
+  return messages[randomIndex];
 };

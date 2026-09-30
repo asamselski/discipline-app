@@ -1,4 +1,5 @@
 import { BookOpen, Brain, CheckSquare, Dumbbell, Plus } from 'lucide-react';
+import { useI18n } from '../i18n-context';
 
 export default function FloatingActionButton({
   isFabOpen,
@@ -10,6 +11,7 @@ export default function FloatingActionButton({
   onAddReading,
   onAddInboxItem,
 }) {
+  const { t } = useI18n();
   if (isAnyModalOpen) return null;
 
   return (
@@ -17,7 +19,7 @@ export default function FloatingActionButton({
       {isFabOpen && (
         <button
           type="button"
-          aria-label="Zamknij menu dodawania"
+          aria-label={t('Zamknij menu dodawania')}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -31,16 +33,16 @@ export default function FloatingActionButton({
         {isFabOpen && (
           <div className="flex flex-col items-end gap-2.5 animate-fadeIn mb-3">
             <button onClick={onAddTask} className={'bg-emerald-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
-              <CheckSquare className="w-4 h-4" /> Dodaj zadanie
+              <CheckSquare className="w-4 h-4" /> {t('Dodaj zadanie')}
             </button>
             <button onClick={onAddWorkout} className={'bg-orange-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
-              <Dumbbell className="w-4 h-4" /> Dodaj trening
+              <Dumbbell className="w-4 h-4" /> {t('Dodaj trening')}
             </button>
             <button onClick={onAddReading} className={'bg-sky-500 text-slate-950 px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
-              <BookOpen className="w-4 h-4" /> Dodaj czytanie
+              <BookOpen className="w-4 h-4" /> {t('Dodaj czytanie')}
             </button>
             <button onClick={onAddInboxItem} className={'bg-violet-500 text-white px-5 py-3.5 rounded-2xl shadow-xl font-bold ' + currentFontConfig.smallClass + ' flex items-center gap-2.5 transition-transform active:scale-95'}>
-              <Brain className="w-4 h-4" /> Zrzut myśli
+              <Brain className="w-4 h-4" /> {t('Zrzut myśli')}
             </button>
           </div>
         )}

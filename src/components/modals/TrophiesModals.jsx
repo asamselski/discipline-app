@@ -1,5 +1,6 @@
 import { Award, Lock, Share2, Trophy, X } from 'lucide-react';
 import { parseLocalDate } from '../../utils/date';
+import { useI18n } from '../../i18n-context';
 
 const TROPHY_GROUPS = [
   { rank: 'bronze', title: 'Brązowe', text: 'text-orange-500', border: 'border-orange-600/30' },
@@ -24,6 +25,7 @@ export function TrophiesModal({
   currentFontConfig,
   tStyle,
 }) {
+  const { locale, t } = useI18n();
   if (!isOpen) return null;
 
   return (
@@ -35,11 +37,11 @@ export function TrophiesModal({
               <Award className="w-7 h-7" />
             </div>
             <div>
-              <h2 className={'font-bold ' + currentFontConfig.headerClass + ' ' + tStyle.titleText}>Moja Gablota Trofeów</h2>
-              <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Zdobyte: {earnedCount} z {trophies.length}</p>
+              <h2 className={'font-bold ' + currentFontConfig.headerClass + ' ' + tStyle.titleText}>{t('Moja Gablota Trofeów')}</h2>
+              <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>{t('Zdobyte: {{earned}} z {{total}}', { earned: earnedCount, total: trophies.length })}</p>
             </div>
           </div>
-          <button onClick={onClose} className={'p-2 rounded-full shrink-0 transition-colors ' + tStyle.modalBtnBg} title="Zamknij gablotę">
+          <button onClick={onClose} className={'p-2 rounded-full shrink-0 transition-colors ' + tStyle.modalBtnBg} title={t('Zamknij gablotę')}>
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -52,7 +54,7 @@ export function TrophiesModal({
               <section key={group.rank}>
                 <div className={'flex items-center justify-between mb-3 pb-2 border-b ' + group.border}>
                   <h3 className={'font-bold uppercase tracking-wider flex items-center gap-2 ' + group.text}>
-                    <Trophy className="w-5 h-5" /> {group.title}
+                    <Trophy className="w-5 h-5" /> {t(group.title)}
                   </h3>
                   <span className={currentFontConfig.smallClass + ' font-mono ' + tStyle.subText}>{groupEarnedCount}/{groupTrophies.length}</span>
                 </div>
@@ -70,9 +72,9 @@ export function TrophiesModal({
                           {earnedDate ? <Trophy className="w-7 h-7" /> : <Lock className="w-6 h-6" />}
                         </div>
                         <div className="text-center w-full">
-                          <span className={'font-bold block leading-tight ' + currentFontConfig.smallClass + ' ' + tStyle.titleText}>{trophy.title}</span>
+                          <span className={'font-bold block leading-tight ' + currentFontConfig.smallClass + ' ' + tStyle.titleText}>{t(trophy.title)}</span>
                           <span className={'block mt-2 text-[11px] ' + (earnedDate ? 'text-emerald-500 font-medium' : tStyle.subText)}>
-                            {earnedDate ? `Zdobyto ${parseLocalDate(earnedDate).toLocaleDateString('pl-PL')}` : 'Do zdobycia'}
+                            {earnedDate ? t('Zdobyto {{date}}', { date: parseLocalDate(earnedDate).toLocaleDateString(locale) }) : t('Do zdobycia')}
                           </span>
                         </div>
                       </button>
@@ -85,7 +87,7 @@ export function TrophiesModal({
         </div>
 
         <button onClick={onClose} className="w-full mt-5 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition-transform active:scale-95">
-          Zamknij gablotę
+          {t('Zamknij gablotę')}
         </button>
       </div>
     </div>
@@ -93,6 +95,7 @@ export function TrophiesModal({
 }
 
 export function TrophyDetailsModal({ trophy, earnedTrophies, userName, onShare, onClose }) {
+  const { locale, t } = useI18n();
   if (!trophy) return null;
   const earnedDate = earnedTrophies[trophy.id];
   const rankColor = trophy.rank === 'gold'
@@ -112,30 +115,30 @@ export function TrophyDetailsModal({ trophy, earnedTrophies, userName, onShare, 
         </div>
 
         <h2 className="text-4xl md:text-5xl font-bold text-white mb-3 tracking-tight">
-          {earnedDate ? (trophy.isNew ? `Gratulacje, ${userName}!` : 'Zdobyte trofeum') : 'Trofeum do zdobycia'}
+          {earnedDate ? (trophy.isNew ? t('Gratulacje, {{name}}!', { name: userName }) : t('Zdobyte trofeum')) : t('Trofeum do zdobycia')}
         </h2>
         <p className={'text-lg mb-8 uppercase tracking-widest font-bold ' + rankColor}>
           {earnedDate
-            ? `Odblokowano ${trophy.rank === 'gold' ? 'złote' : trophy.rank === 'silver' ? 'srebrne' : 'brązowe'} trofeum`
-            : `${trophy.rank === 'gold' ? 'Złote' : trophy.rank === 'silver' ? 'Srebrne' : 'Brązowe'} trofeum`}
+            ? t(trophy.rank === 'gold' ? 'Odblokowano złote trofeum' : trophy.rank === 'silver' ? 'Odblokowano srebrne trofeum' : 'Odblokowano brązowe trofeum')
+            : t(trophy.rank === 'gold' ? 'Złote trofeum' : trophy.rank === 'silver' ? 'Srebrne trofeum' : 'Brązowe trofeum')}
         </p>
 
         <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-700/50 mb-8 shadow-inner">
-          <h3 className="text-2xl font-bold text-white mb-2">{trophy.title}</h3>
-          <p className="text-slate-400 text-lg">{trophy.desc}</p>
+          <h3 className="text-2xl font-bold text-white mb-2">{t(trophy.title)}</h3>
+          <p className="text-slate-400 text-lg">{t(trophy.desc)}</p>
           {earnedDate && (
-            <p className="text-emerald-400 font-bold mt-4">Zdobyto: {parseLocalDate(earnedDate).toLocaleDateString('pl-PL')}</p>
+            <p className="text-emerald-400 font-bold mt-4">{t('Zdobyto: {{date}}', { date: parseLocalDate(earnedDate).toLocaleDateString(locale) })}</p>
           )}
         </div>
 
         <div className="flex flex-col gap-4">
           {earnedDate && (
             <button onClick={() => onShare(trophy)} className="w-full py-4 rounded-2xl bg-emerald-500 text-slate-950 font-bold text-lg flex items-center justify-center gap-2 hover:bg-emerald-400 transition-transform active:scale-95 shadow-lg shadow-emerald-500/20">
-              <Share2 className="w-6 h-6" /> Udostępnij sukces
+              <Share2 className="w-6 h-6" /> {t('Udostępnij sukces')}
             </button>
           )}
           <button onClick={onClose} className="w-full py-4 rounded-2xl bg-slate-800 border border-slate-700 text-white font-bold text-lg hover:bg-slate-700 transition-colors">
-            Zamknij
+            {t('Zamknij')}
           </button>
         </div>
       </div>

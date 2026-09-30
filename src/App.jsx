@@ -20,6 +20,8 @@ import SettingsModal from './components/modals/SettingsModal';
 import GoalWizardModal from './components/modals/GoalWizardModal';
 import TaskModals from './components/modals/TaskModals';
 import DayClosureModal from './components/modals/DayClosureModal';
+import OnboardingModal from './components/modals/OnboardingModal';
+import { useI18n } from './i18n-context';
 import {
   GOOGLE_API_KEY,
   GOOGLE_CLIENT_ID,
@@ -40,6 +42,7 @@ import {
 } from 'lucide-react';
 
 export default function App() {
+  const { language, locale, t } = useI18n();
   const [resetTime, setResetTime] = useState(() => localStorage.getItem('discipline_reset_time') || '00:00');
   const [todayStr, setTodayStr] = useState(() => getAppDayString());
   const [notificationStatus, setNotificationStatus] = useState(() => getNotificationStatus());
@@ -67,8 +70,8 @@ export default function App() {
       : await enableNotifications();
 
     if (status === 'granted') {
-      await showAppNotification('Powiadomienia działają! ✅', {
-        body: 'SamoDyscyplina może wyświetlać przypomnienia na tym urządzeniu.',
+      await showAppNotification(t('Powiadomienia działają! ✅'), {
+        body: t('SamoDyscyplina może wyświetlać przypomnienia na tym urządzeniu.'),
         tag: 'discipline-notification-test',
       });
     }
@@ -81,14 +84,14 @@ export default function App() {
   }, []);
 
   const enableFullPush = async () => {
-    setPushMessage('Łączenie z usługą powiadomień...');
+    setPushMessage(t('Łączenie z usługą powiadomień...'));
     try {
       const permission = await enableNotifications();
-      if (permission !== 'granted') throw new Error('Najpierw zezwól aplikacji na powiadomienia.');
+      if (permission !== 'granted') throw new Error(t('Najpierw zezwól aplikacji na powiadomienia.'));
       savePushApiUrl(pushApiUrl);
-      await enablePushNotifications(tasks);
+      await enablePushNotifications(tasks, language);
       setPushStatus('enabled');
-      setPushMessage('✅ Pełne powiadomienia są aktywne także po zamknięciu aplikacji.');
+      setPushMessage(t('✅ Pełne powiadomienia są aktywne także po zamknięciu aplikacji.'));
     } catch (error) {
       setPushStatus('disabled');
       setPushMessage(`❌ ${error.message}`);
@@ -99,7 +102,7 @@ export default function App() {
     try {
       await disablePushNotifications();
       setPushStatus('disabled');
-      setPushMessage('Powiadomienia w tle zostały wyłączone.');
+      setPushMessage(t('Powiadomienia w tle zostały wyłączone.'));
     } catch (error) {
       setPushMessage(`❌ ${error.message}`);
     }
@@ -109,6 +112,19 @@ export default function App() {
   const chartScrollRef = useRef(null);
     
   const [userName, setUserName] = useState(() => localStorage.getItem('discipline_user_name') || 'Wojownik');
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    if (localStorage.getItem('discipline_onboarding_completed') === 'true') return false;
+    const hasStoredItems = ['discipline_tasks_unified', 'discipline_goals', 'discipline_workouts', 'discipline_notes', 'discipline_books', 'discipline_inbox'].some((key) => {
+      try {
+        const value = JSON.parse(localStorage.getItem(key) || 'null');
+        return Array.isArray(value) ? value.length > 0 : Boolean(value && Object.keys(value).length > 0);
+      } catch {
+        return false;
+      }
+    });
+    const storedName = localStorage.getItem('discipline_user_name');
+    return !hasStoredItems && (!storedName || storedName === 'Wojownik');
+  });
   const [userGender, setUserGender] = useState(() => localStorage.getItem('discipline_user_gender') || 'male');
   const [theme, setTheme] = useState(() => localStorage.getItem('discipline_theme') || 'system');
   const [fontSizeLevel, setFontSizeLevel] = useState(() => {
@@ -188,7 +204,7 @@ export default function App() {
     
     // Zapisujemy prawdziwe dane i odpalamy trenera
     setYesterdayCalculatedStats(finalStats);
-    setYesterdayReportMessage(getYesterdayReview(finalStats));
+    setYesterdayReportMessage(getYesterdayReview(finalStats, language));
     setShowYesterdayModal(true);
   };
 
@@ -304,16 +320,19 @@ export default function App() {
   const [calendarViewDate, setCalendarViewDate] = useState(() => new Date());
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskCategory, setNewTaskCategory] = useState('Zdrowie');
+  const [newTaskCategory, setNewTaskCategory] = useState(() => localStorage.getItem('discipline_last_task_category') || 'Zdrowie');
   const [newTaskGoalId, setNewTaskGoalId] = useState('');
   const [newTaskRepeat, setNewTaskRepeat] = useState('once');
   const [newTaskIntervalDays, setNewTaskIntervalDays] = useState('2');
   const [newTaskCustomDates, setNewTaskCustomDates] = useState([]);
   const [newTaskDueDate, setNewTaskDueDate] = useState(() => getAppDayString());
-  const [newTaskDuration, setNewTaskDuration] = useState('');
-  const [newTaskDifficulty, setNewTaskDifficulty] = useState('medium');
+  const [newTaskDuration, setNewTaskDuration] = useState(() => localStorage.getItem('discipline_last_task_duration') || '');
+  const [newTaskDifficulty, setNewTaskDifficulty] = useState(() => {
+    const savedDifficulty = localStorage.getItem('discipline_last_task_difficulty');
+    return ['easy', 'medium', 'hard'].includes(savedDifficulty) ? savedDifficulty : 'medium';
+  });
   const [newTaskHasReminder, setNewTaskHasReminder] = useState(false);
-  const [newTaskReminderTime, setNewTaskReminderTime] = useState('08:00');
+  const [newTaskReminderTime, setNewTaskReminderTime] = useState(() => localStorage.getItem('discipline_last_task_reminder_time') || '08:00');
 
   const [newWorkoutType, setNewWorkoutType] = useState('run');
   const [newWorkoutAmount, setNewWorkoutAmount] = useState('');
@@ -363,7 +382,8 @@ export default function App() {
     taskAmount: '',
     taskDifficulty: 'medium',
     taskDuration: '',
-    bookTotalPages: '' 
+    bookTotalPages: '',
+    selectedBookId: ''
   });
 
   const openGoalWizard = () => {
@@ -372,7 +392,7 @@ export default function App() {
       dueDate: getAppDayString(), isDaily: false, purpose: '',
       createTask: false, taskRepeat: 'daily', taskTitle: '', customDates: [],
       taskAmount: '', taskDifficulty: 'medium', taskDuration: '',
-      bookTotalPages: ''
+      bookTotalPages: '', selectedBookId: ''
     });
     setFormErrors({}); 
     setGoalWizardStep(1);
@@ -387,6 +407,7 @@ export default function App() {
       read_book: 'stron', read_chapters: 'rozdziałów',
       study: 'godz.', language: 'lekcji', course: 'modułów',
       deep_work: 'godz.', project: 'szt.',
+      small_steps: 'kroków',
       no_sweets: 'dni', water: 'dni', sleep: 'dni', steps: 'kroków'
     };
     return units[type] || 'jedn.';
@@ -477,26 +498,26 @@ export default function App() {
         callback: (tokenResponse) => {
           if (tokenResponse?.error) {
             setIsGoogleAuthorized(false);
-            setGoogleBackupStatus(`❌ Logowanie Google: ${getGoogleErrorMessage(tokenResponse)}`);
+            setGoogleBackupStatus(`❌ ${t('Logowanie Google')}: ${t(getGoogleErrorMessage(tokenResponse))}`);
             return;
           }
           if (!tokenResponse?.access_token || !window.google.accounts.oauth2.hasGrantedAllScopes(tokenResponse, GOOGLE_DRIVE_SCOPE)) {
             setIsGoogleAuthorized(false);
-            setGoogleBackupStatus('❌ Nie przyznano dostępu do kopii na Dysku Google.');
+            setGoogleBackupStatus(t('❌ Nie przyznano dostępu do kopii na Dysku Google.'));
             return;
           }
           saveGoogleAccessToken(tokenResponse);
           window.gapi.client.setToken(tokenResponse);
           setIsGoogleAuthorized(true);
-          setGoogleBackupStatus('✅ Połączono z Dyskiem Google.');
+          setGoogleBackupStatus(t('✅ Połączono z Dyskiem Google.'));
           setTimeout(() => setGoogleBackupStatus(''), 3000);
         },
         error_callback: (error) => {
           const message = error?.type === 'popup_closed'
-            ? 'Okno logowania zostało zamknięte.'
+            ? t('Okno logowania zostało zamknięte.')
             : error?.type === 'popup_failed_to_open'
-              ? 'Przeglądarka zablokowała okno logowania.'
-              : getGoogleErrorMessage(error);
+              ? t('Przeglądarka zablokowała okno logowania.')
+              : t(getGoogleErrorMessage(error));
           setGoogleBackupStatus(`❌ ${message}`);
         },
       });
@@ -511,19 +532,19 @@ export default function App() {
   useEffect(() => {
     initializeGoogle().catch((error) => {
       console.error('Nie udało się zainicjalizować Google:', error);
-      setGoogleBackupStatus(`❌ Google Drive: ${getGoogleErrorMessage(error)}`);
+      setGoogleBackupStatus(`❌ Google Drive: ${t(getGoogleErrorMessage(error))}`);
     });
   }, []);
 
   const handleAuthClick = async () => {
-    setGoogleBackupStatus('Łączenie z Google...');
+    setGoogleBackupStatus(t('Łączenie z Google...'));
     try {
       await initializeGoogle();
       const prompt = window.gapi.client.getToken() === null ? 'consent' : '';
       tokenClientRef.current.requestAccessToken({ prompt });
     } catch (error) {
       console.error('Błąd logowania Google:', error);
-      setGoogleBackupStatus(`❌ Google Drive: ${getGoogleErrorMessage(error)}`);
+      setGoogleBackupStatus(`❌ Google Drive: ${t(getGoogleErrorMessage(error))}`);
     }
   };
   const handleSignoutClick = () => {
@@ -532,7 +553,7 @@ export default function App() {
       clearStoredGoogleAccessToken();
       window.gapi?.client?.setToken('');
       setIsGoogleAuthorized(false);
-      setGoogleBackupStatus('Wylogowano konto Google.');
+      setGoogleBackupStatus(t('Wylogowano konto Google.'));
     };
 
     if (token?.access_token) {
@@ -543,7 +564,7 @@ export default function App() {
   };
 
   const backupToGoogleDrive = async ({ silent = false } = {}) => {
-    if (!silent) setGoogleBackupStatus('Tworzenie kopii...');
+    if (!silent) setGoogleBackupStatus(t('Tworzenie kopii...'));
     try {
       const fileContent = JSON.stringify(createBackupDocument());
       const fileMetadata = {
@@ -584,7 +605,7 @@ export default function App() {
 
       localStorage.setItem('discipline_last_backup_at', new Date().toISOString());
       if (!silent) {
-        setGoogleBackupStatus('✅ Sukces! Zapisano na Dysku Google.');
+        setGoogleBackupStatus(t('✅ Sukces! Zapisano na Dysku Google.'));
         setTimeout(() => setGoogleBackupStatus(''), 3000);
       }
     } catch (err) {
@@ -596,14 +617,14 @@ export default function App() {
         setIsGoogleAuthorized(false);
       }
       if (!silent || err?.status === 401 || err?.result?.error?.code === 401) {
-        setGoogleBackupStatus(`❌ Nie zapisano kopii: ${message}`);
+        setGoogleBackupStatus(t('❌ Nie zapisano kopii: {{message}}', { message: t(message) }));
       }
     }
   };
 
   const exportDataToJson = () => {
     downloadBackupDocument();
-    setGoogleBackupStatus('✅ Wyeksportowano dane do pliku JSON.');
+    setGoogleBackupStatus(t('✅ Wyeksportowano dane do pliku JSON.'));
     setTimeout(() => setGoogleBackupStatus(''), 3000);
   };
 
@@ -613,10 +634,10 @@ export default function App() {
     try {
       const document = JSON.parse(await file.text());
       const restoredCount = restoreBackupDocument(document);
-      setGoogleBackupStatus(`✅ Przywrócono ${restoredCount} elementów. Odświeżanie...`);
+      setGoogleBackupStatus(t('✅ Przywrócono {{count}} elementów. Odświeżanie...', { count: restoredCount }));
       setTimeout(() => window.location.reload(), 800);
     } catch (error) {
-      setGoogleBackupStatus(`❌ ${error.message}`);
+      setGoogleBackupStatus(`❌ ${t(error.message)}`);
     } finally {
       event.target.value = '';
     }
@@ -640,7 +661,7 @@ export default function App() {
   // ----------------------------------------------
 
   const restoreFromGoogleDrive = async () => {
-    setGoogleBackupStatus('Szukanie kopii...');
+    setGoogleBackupStatus(t('Szukanie kopii...'));
     try {
       // Szukamy pliku na dysku
       const response = await window.gapi.client.drive.files.list({
@@ -652,11 +673,11 @@ export default function App() {
 
       const files = response.result.files;
       if (!files || files.length === 0) {
-        setGoogleBackupStatus('❌ Nie znaleziono pliku kopii zapasowej.');
+        setGoogleBackupStatus(t('❌ Nie znaleziono pliku kopii zapasowej.'));
         return;
       }
 
-      setGoogleBackupStatus('Pobieranie danych...');
+      setGoogleBackupStatus(t('Pobieranie danych...'));
       const fileId = files[0].id;
       
       const fileData = await window.gapi.client.drive.files.get({
@@ -667,7 +688,7 @@ export default function App() {
       const restoredData = typeof fileData.result === 'string' ? JSON.parse(fileData.result) : fileData.result;
       restoreBackupDocument(restoredData);
 
-      setGoogleBackupStatus('✅ Sukces! Odświeżanie...');
+      setGoogleBackupStatus(t('✅ Sukces! Odświeżanie...'));
       setTimeout(() => window.location.reload(), 1000); // Przeładowujemy, aby wczytać stany
 
     } catch (err) {
@@ -677,7 +698,7 @@ export default function App() {
         window.gapi?.client?.setToken('');
         setIsGoogleAuthorized(false);
       }
-      setGoogleBackupStatus(`❌ Nie pobrano kopii: ${getGoogleErrorMessage(err)}`);
+      setGoogleBackupStatus(t('❌ Nie pobrano kopii: {{message}}', { message: t(getGoogleErrorMessage(err)) }));
     }
   };
   // ----------------------------------------------
@@ -739,7 +760,7 @@ export default function App() {
              setShowWeeklyReviewModal(true);
              localStorage.setItem('discipline_weekly_review_date', todayStr);
              if (shouldShowLocalNotification && notificationStatus === 'granted') {
-                await showAppNotification('Tygodniowy Przegląd! 🏆', { body: 'Czas podsumować ubiegły tydzień i zaplanować nowe zwycięstwa.', tag: `weekly-review-${todayStr}` });
+                await showAppNotification(t('Tygodniowy Przegląd! 🏆'), { body: t('Czas podsumować ubiegły tydzień i zaplanować nowe zwycięstwa.'), tag: `weekly-review-${todayStr}` });
              }
          }
       }
@@ -747,7 +768,7 @@ export default function App() {
       if (currentTimeStr === '21:00') {
         const notified = localStorage.getItem('discipline_daily_plan_notified');
         if (notified !== todayStr && shouldShowLocalNotification && notificationStatus === 'granted') {
-          await showAppNotification('Czas zaplanować jutro! 🗓️', { body: 'Przejrzyj swoje zadania i zaplanuj kolejny dzień, by utrzymać dyscyplinę.', tag: `daily-plan-${todayStr}` });
+          await showAppNotification(t('Czas zaplanować jutro! 🗓️'), { body: t('Przejrzyj swoje zadania i zaplanuj kolejny dzień, by utrzymać dyscyplinę.'), tag: `daily-plan-${todayStr}` });
           localStorage.setItem('discipline_daily_plan_notified', todayStr);
         }
       }
@@ -777,7 +798,7 @@ export default function App() {
       clearInterval(reminderInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [tasks, todayStr, notificationStatus, pushStatus]);
+  }, [tasks, todayStr, notificationStatus, pushStatus, t]);
 
   useEffect(() => localStorage.setItem('discipline_tasks_unified', JSON.stringify(tasks)), [tasks]);
   useEffect(() => localStorage.setItem('discipline_workouts', JSON.stringify(workouts)), [workouts]);
@@ -787,10 +808,10 @@ export default function App() {
   useEffect(() => {
     if (pushStatus !== 'enabled' || !getPushApiUrl()) return undefined;
     const timer = setTimeout(() => {
-      syncPushReminders(tasks).catch((error) => setPushMessage(`Błąd synchronizacji: ${error.message}`));
+      syncPushReminders(tasks, language).catch((error) => setPushMessage(t('Błąd synchronizacji: {{message}}', { message: t(error.message) })));
     }, 1500);
     return () => clearTimeout(timer);
-  }, [tasks, pushStatus]);
+  }, [tasks, pushStatus, language, t]);
 
 // --- STANY DLA BIBLIOTEKI KSIĄŻEK ---
   const [books, setBooks] = useState(() => {
@@ -830,7 +851,7 @@ export default function App() {
   };
 
   const deleteBook = (id) => {
-    if (window.confirm('Czy na pewno chcesz usunąć tę książkę z biblioteki?')) {
+    if (window.confirm(t('Czy na pewno chcesz usunąć tę książkę z biblioteki?'))) {
       setBooks(books.filter(b => b.id !== id));
     }
   };
@@ -1093,14 +1114,16 @@ const executeComplete = () => {
     };
 
     setTasks([...tasks, newTask]);
+    localStorage.setItem('discipline_last_task_category', newTaskCategory);
+    localStorage.setItem('discipline_last_task_difficulty', newTaskDifficulty);
+    localStorage.setItem('discipline_last_task_duration', newTaskDuration);
+    localStorage.setItem('discipline_last_task_reminder_time', newTaskReminderTime);
     setNewTaskTitle('');
     setNewTaskGoalId('');
-    setNewTaskDuration('');
-    setNewTaskDifficulty('medium');
     setNewTaskRepeat('once');
     setNewTaskCustomDates([]);
+    setNewTaskDueDate(todayStr);
     setNewTaskHasReminder(false);
-    setNewTaskReminderTime('08:00');
     setShowAddTaskModal(false);
   };
 
@@ -1245,6 +1268,7 @@ const handleMultiWorkoutSubmit = (e) => {
     else if (editingWorkout.type === 'gym') { calculatedPkt = Math.round(amountVal * 3); unit = 'min'; }
     else if (editingWorkout.type === 'steps') { calculatedPkt = Math.round(amountVal / 1000 * 5); unit = 'kroków'; }
     else if (editingWorkout.type === 'study') { calculatedPkt = Math.round(amountVal * 10); unit = 'godz.'; }
+    else if (editingWorkout.type === 'small_steps') { calculatedPkt = Math.round(amountVal * 5); unit = 'kroków'; }
     else if (editingWorkout.type === 'read_book') { calculatedPkt = Math.round(amountVal * 1); unit = 'stron'; }
     else if (editingWorkout.type === 'read_chapters') { calculatedPkt = Math.round(amountVal * 5); unit = 'rozdziałów'; }
     else if (editingWorkout.type === 'no_sweets') { calculatedPkt = Math.round(amountVal * 20); unit = 'dni'; }
@@ -1355,7 +1379,7 @@ const handleWizardNext = () => {
        const durationMin = targetVal * 60; 
        const newTask = {
          id: Date.now() + 1,
-         title: `Wyzwanie: ${wizardData.title.trim()} (${targetVal}h)`,
+         title: t('Wyzwanie: {{title}} ({{hours}}h)', { title: wizardData.title.trim(), hours: targetVal }),
          category: catConfig.dbCat,
          goalId: newGoal.id,
          pkt: Math.min(50, Math.max(20, targetVal * 2)), 
@@ -1435,6 +1459,7 @@ const handleWizardNext = () => {
 
     let unitLabel = 'stron';
     if (goal.type === 'study') unitLabel = 'godz.';
+    else if (goal.type === 'small_steps') unitLabel = 'kroków';
     else if (goal.type === 'no_sweets') unitLabel = 'dni';
     else if (goal.type === 'read_chapters') unitLabel = 'rozdziałów';
 
@@ -1445,7 +1470,7 @@ const handleWizardNext = () => {
       type: goal.type,
       amount: val,
       unit: unitLabel,
-      pkt: goal.type === 'study' ? Math.round(val * 10) : goal.type === 'no_sweets' ? Math.round(val * 20) : goal.type === 'read_chapters' ? Math.round(val * 5) : val
+      pkt: goal.type === 'study' ? Math.round(val * 10) : goal.type === 'small_steps' ? Math.round(val * 5) : goal.type === 'no_sweets' ? Math.round(val * 20) : goal.type === 'read_chapters' ? Math.round(val * 5) : val
     };
     setWorkouts([newWorkout, ...workouts]);
 
@@ -1541,7 +1566,7 @@ const handleWizardNext = () => {
         );
       });
     } catch(e) {
-      return <div className="col-span-7 text-xs text-center p-2">Błąd kalendarza</div>;
+      return <div className="col-span-7 text-xs text-center p-2">{t('Błąd kalendarza')}</div>;
     }
   };
 
@@ -1581,7 +1606,7 @@ const handleWizardNext = () => {
     const totalWorkoutsCount = workouts.length;
     const completedGoalsCount = goals.filter(goal => {
       if (goal.isDaily || !goal.target) return false;
-      const isProgressType = ['read_book', 'read_chapters', 'study', 'no_sweets'].includes(goal.type);
+      const isProgressType = ['read_book', 'read_chapters', 'study', 'no_sweets', 'small_steps'].includes(goal.type);
       const currentValue = isProgressType
         ? (goal.currentPage || 0)
         : workouts.filter(workout => workout.type === goal.type).reduce((sum, workout) => sum + workout.amount, 0);
@@ -1626,14 +1651,14 @@ const handleWizardNext = () => {
     const earnedDate = earnedTrophies[trophy.id];
     if (!earnedDate) return;
 
-    const rankName = trophy.rank === 'gold' ? 'Złote' : trophy.rank === 'silver' ? 'Srebrne' : 'Brązowe';
-    const formattedDate = parseLocalDate(earnedDate).toLocaleDateString('pl-PL');
-    const textToShare = `${rankName} trofeum „${trophy.title}” zdobyte ${formattedDate} w aplikacji SamoDyscyplina! 🏆🔥`;
+    const rankName = t(trophy.rank === 'gold' ? 'Złote' : trophy.rank === 'silver' ? 'Srebrne' : 'Brązowe');
+    const formattedDate = parseLocalDate(earnedDate).toLocaleDateString(locale);
+    const textToShare = t('{{rank}} trofeum „{{title}}” zdobyte {{date}} w aplikacji SamoDyscyplina! 🏆🔥', { rank: rankName, title: t(trophy.title), date: formattedDate });
     
     if (navigator.share) {
         try {
             await navigator.share({
-                title: 'Kolejne trofeum odblokowane!',
+                title: t('Kolejne trofeum odblokowane!'),
                 text: textToShare,
             });
         } catch (err) {
@@ -1641,7 +1666,7 @@ const handleWizardNext = () => {
         }
     } else {
         navigator.clipboard.writeText(textToShare);
-        alert('Tekst skopiowany do schowka! Możesz go teraz wkleić w dowolnym miejscu.');
+        alert(t('Tekst skopiowany do schowka! Możesz go teraz wkleić w dowolnym miejscu.'));
     }
   };
 
@@ -1652,8 +1677,8 @@ const handleWizardNext = () => {
       const newRankObj = RANKS.slice().reverse().find(r => currentLevel >= r.minLevel);
       const isRankUp = oldRankObj && newRankObj && oldRankObj.name !== newRankObj.name;
       const msgs = isRankUp 
-        ? [`Nowa ranga odblokowana, ${userName}: ${newRankObj.name}! To już nie jest zwykła dyscyplina, to Twój nowy charakter.`]
-        : [`Poziom ${currentLevel} zdobyty, ${userName}! Twoja konsekwencja zaczyna przynosić realne owoce.`];
+        ? [t('Nowa ranga odblokowana, {{name}}: {{rank}}! To już nie jest zwykła dyscyplina, to Twój nowy charakter.', { name: userName, rank: t(newRankObj.name) })]
+        : [t('Poziom {{level}} zdobyty, {{name}}! Twoja konsekwencja zaczyna przynosić realne owoce.', { level: currentLevel, name: userName })];
         
       setLevelUpModalData({ show: true, level: currentLevel, isRankUp, message: msgs[0], rankName: newRankObj?.name });
       setLastCheckedLevel(currentLevel);
@@ -1662,7 +1687,7 @@ const handleWizardNext = () => {
       setLastCheckedLevel(currentLevel);
       localStorage.setItem('discipline_last_checked_level', currentLevel.toString());
     }
-  }, [totalPKT, userName, userGender, lastCheckedLevel, levelInfo.level]);
+  }, [totalPKT, userName, userGender, lastCheckedLevel, levelInfo.level, t]);
 
   const tomorrowDate = parseLocalDate(todayStr);
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
@@ -1699,7 +1724,7 @@ const handleWizardNext = () => {
     const selectedTask = tasks.find((task) => task.id === taskId);
     const isPriorityToday = selectedTask?.isPriority && selectedTask.priorityDate === todayStr;
     if (!isPriorityToday && priorityTasks.length >= 3) {
-      alert('Możesz wybrać maksymalnie 3 najważniejsze zadania na dziś.');
+      alert(t('Możesz wybrać maksymalnie 3 najważniejsze zadania na dziś.'));
       return;
     }
     setTasks((currentTasks) => currentTasks.map((task) =>
@@ -1906,6 +1931,77 @@ const handleWizardNext = () => {
     setQuoteModal({ ...quoteModal, show: false });
   };
 
+  const completeOnboarding = ({ name, goals: onboardingGoals, taskPlans, bookPlan }) => {
+    const baseId = Date.now();
+    const dueDate = parseLocalDate(todayStr);
+    dueDate.setDate(dueDate.getDate() + 90);
+    const newGoals = onboardingGoals.map((goal, index) => ({
+      id: baseId + index,
+      title: goal.title.trim(),
+      category: goal.category,
+      type: 'small_steps',
+      targetUnit: 'kroków',
+      target: 10,
+      currentPage: 0,
+      dueDate: formatDateStr(dueDate),
+      isDaily: false,
+      comment: t('Wielkie cele realizuje się małymi, realnymi krokami.'),
+      createdFromOnboarding: true,
+    }));
+    const newTasks = taskPlans.flatMap((taskPlan, index) => {
+      if (!taskPlan.createTask) return [];
+      return [{
+        id: baseId + 100 + index,
+        title: taskPlan.title.trim(),
+        category: newGoals[index].category,
+        goalId: newGoals[index].id,
+        pkt: 10,
+        difficulty: 'easy',
+        repeat: 'once',
+        intervalDays: 1,
+        customDates: [],
+        dueDate: todayStr,
+        duration: 15,
+        hasReminder: false,
+        reminderTime: '08:00',
+        createdAt: todayStr,
+        isCompleted: false,
+        completedDates: {},
+        timeLeft: 15 * 60,
+        isRunning: false,
+        lastTick: null,
+        createdFromOnboarding: true,
+      }];
+    });
+
+    setUserName(name);
+    localStorage.setItem('discipline_user_name', name);
+    localStorage.setItem('discipline_onboarding_completed', 'true');
+    localStorage.setItem('discipline_quote_date', todayStr);
+    setGoals((current) => [...current, ...newGoals]);
+    setTasks((current) => [...current, ...newTasks]);
+    if (bookPlan?.title?.trim()) {
+      setBooks((current) => [{
+        id: baseId + 200,
+        title: bookPlan.title.trim(),
+        totalPages: parseInt(bookPlan.totalPages) || null,
+        status: bookPlan.status === 'planned' ? 'planned' : 'in_progress',
+        createdAt: todayStr,
+        createdFromOnboarding: true,
+      }, ...current]);
+    }
+    setQuoteModal({ show: false, data: null });
+    setActiveTab('today');
+    setShowOnboarding(false);
+  };
+
+  const skipOnboarding = () => {
+    localStorage.setItem('discipline_onboarding_completed', 'true');
+    localStorage.setItem('discipline_quote_date', todayStr);
+    setQuoteModal({ show: false, data: null });
+    setShowOnboarding(false);
+  };
+
   const getThemeStyles = () => {
     if (theme === 'light') {
       return {
@@ -2000,14 +2096,14 @@ const handleWizardNext = () => {
     });
 
     const pathData = 'M ' + points.join(' L ');
-    const monthLabelName = selectedMonthDate.toLocaleString('pl-PL', { month: 'long', year: 'numeric' });
+    const monthLabelName = selectedMonthDate.toLocaleString(locale, { month: 'long', year: 'numeric' });
 
     return (
       <div className={'p-5 md:p-7 rounded-3xl border mb-6 ' + tStyle.cardBg}>
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h3 className={'font-bold capitalize ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>Wykres: {monthLabelName}</h3>
-            <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Suma w miesiącu: <span className="text-amber-500 font-bold">{monthTotalPKT} PKT</span></p>
+            <h3 className={'font-bold capitalize ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>{t('Wykres: {{month}}', { month: monthLabelName })}</h3>
+            <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>{t('Suma w miesiącu:')} <span className="text-amber-500 font-bold">{monthTotalPKT} {t('PKT')}</span></p>
           </div>
           <div className="flex items-center gap-1 bg-slate-500/10 p-1 rounded-xl border border-slate-500/20">
             <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-slate-500/25 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
@@ -2056,7 +2152,7 @@ const handleWizardNext = () => {
       <div className={'p-5 rounded-2xl border ' + tStyle.cardBg}>
         <div className="flex justify-between items-center mb-4">
           <h3 className={'font-bold capitalize ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>
-            {calendarViewDate.toLocaleString('pl-PL', { month: 'long', year: 'numeric' })}
+            {calendarViewDate.toLocaleString(locale, { month: 'long', year: 'numeric' })}
           </h3>
           <div className="flex items-center gap-1 bg-slate-500/10 p-1 rounded-xl border border-slate-500/20">
             <button onClick={() => setCalendarViewDate(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-slate-500/25 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
@@ -2064,7 +2160,7 @@ const handleWizardNext = () => {
           </div>
         </div>
         <div className={'grid grid-cols-7 gap-1 text-center ' + currentFontConfig.smallClass + ' font-semibold mb-2 ' + tStyle.subText}>
-          <span>Pn</span><span>Wt</span><span>Śr</span><span>Cz</span><span>Pt</span><span>Sob</span><span>Ndz</span>
+          <span>{t('Pn')}</span><span>{t('Wt')}</span><span>{t('Śr')}</span><span>{t('Cz')}</span><span>{t('Pt')}</span><span>{t('Sob')}</span><span>{t('Ndz')}</span>
         </div>
         <div className="grid grid-cols-7 gap-2">
           {days.map((dateStr, idx) => {
@@ -2146,7 +2242,7 @@ const handleWizardNext = () => {
   const isPastDay = selectedDate < todayStr;
   const isFutureDay = selectedDate > todayStr;
   const currentNote = notes[selectedDate] || '';
-  const monthNameDisplay = selectedMonthDate.toLocaleString('pl-PL', { month: 'long', year: 'numeric' });
+  const monthNameDisplay = selectedMonthDate.toLocaleString(locale, { month: 'long', year: 'numeric' });
 
   const textareaRef = useRef(null);
 
@@ -2166,7 +2262,7 @@ const handleWizardNext = () => {
 
   const archivedGoals = goals.filter(goal => {
     if (goal.isDaily) return false;
-    const isProgressType = goal.type === 'read_book' || goal.type === 'read_chapters' || goal.type === 'study' || goal.type === 'no_sweets';
+    const isProgressType = goal.type === 'read_book' || goal.type === 'read_chapters' || goal.type === 'study' || goal.type === 'no_sweets' || goal.type === 'small_steps';
     const currentVal = isProgressType ? (goal.currentPage || 0) : workouts.filter(w => w.type === goal.type).reduce((acc, w) => acc + w.amount, 0);
     const percent = Math.min(100, Math.round((currentVal / goal.target) * 100));
     return percent >= 100;
@@ -2303,13 +2399,13 @@ const handleWizardNext = () => {
     <div className={'p-5 rounded-3xl border shadow-sm ' + tStyle.cardBg}>
       <h3 className={'font-bold mb-4 ' + currentFontConfig.sizeClass + ' ' + accentClass}>{title}</h3>
       <div className="grid grid-cols-2 gap-3">
-        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>Skuteczność</span><strong className="text-2xl">{stats.completionRate}%</strong></div>
-        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>Zadania</span><strong className="text-2xl">{stats.completedTasks}/{stats.plannedTasks}</strong></div>
-        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>Aktywności</span><strong className="text-2xl">{stats.activityCount}</strong></div>
-        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>Punkty</span><strong className="text-2xl">{stats.points}</strong></div>
+        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>{t('Skuteczność')}</span><strong className="text-2xl">{stats.completionRate}%</strong></div>
+        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>{t('Zadania')}</span><strong className="text-2xl">{stats.completedTasks}/{stats.plannedTasks}</strong></div>
+        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>{t('Aktywności')}</span><strong className="text-2xl">{stats.activityCount}</strong></div>
+        <div className="p-3 rounded-2xl bg-slate-500/10"><span className={currentFontConfig.smallClass + ' block ' + tStyle.subText}>{t('Punkty')}</span><strong className="text-2xl">{stats.points}</strong></div>
       </div>
       <p className={currentFontConfig.smallClass + ' mt-3 ' + tStyle.subText}>
-        Najlepszy dzień: {stats.bestDay.date ? `${stats.bestDay.date} (${stats.bestDay.points} PKT)` : 'brak danych'}
+        {t('Najlepszy dzień: {{value}}', { value: stats.bestDay.date ? `${stats.bestDay.date} (${stats.bestDay.points} ${t('PKT')})` : t('brak danych') })}
       </p>
     </div>
   );
@@ -2325,7 +2421,7 @@ const handleWizardNext = () => {
     confirmDeleteModal || confirmCompleteModal || showDeleteNoteConfirm ||
     (quoteModal.show && quoteModal.data) || showRanksModal ||
     showWeeklyReviewModal || showBooksModal || showAddBookModal ||
-    showResetConfirmModal || showYesterdayModal || showCloseDayModal
+    showResetConfirmModal || showYesterdayModal || showCloseDayModal || showOnboarding
   );
 
   return (
@@ -2335,19 +2431,19 @@ const handleWizardNext = () => {
         <>
           <header className="flex justify-between items-center mb-6 md:mb-8">
             <div>
-              <h1 className={currentFontConfig.headerClass + ' font-bold tracking-tight ' + tStyle.titleText}>Cześć, {userName}! 👋</h1>
-              <p className={currentFontConfig.smallClass + ' md:text-base ' + tStyle.subText}>Dyscyplina buduje wolność</p>
+              <h1 className={currentFontConfig.headerClass + ' font-bold tracking-tight ' + tStyle.titleText}>{t('Cześć, {{name}}! 👋', { name: userName })}</h1>
+              <p className={currentFontConfig.smallClass + ' md:text-base ' + tStyle.subText}>{t('Dyscyplina buduje wolność')}</p>
             </div>
 
             <div className="flex items-center gap-2">
-              <button onClick={handleOpenYesterdayReport} className={'p-3 md:p-3.5 rounded-full border text-blue-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title="Raport z wczoraj">
+              <button onClick={handleOpenYesterdayReport} className={'p-3 md:p-3.5 rounded-full border text-blue-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title={t('Raport z wczoraj')}>
                 <History className="w-5 h-5 md:w-6 md:h-6" />
               </button>
-              <button onClick={() => setShowInboxListModal(true)} className={'relative p-3 md:p-3.5 rounded-full border text-violet-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title="Skrzynka odbiorcza (Zrzut myśli)">
+              <button onClick={() => setShowInboxListModal(true)} className={'relative p-3 md:p-3.5 rounded-full border text-violet-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title={t('Skrzynka odbiorcza (Zrzut myśli)')}>
                 <Archive className="w-5 h-5 md:w-6 md:h-6" />
                 {inbox.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border border-slate-900 animate-bounce">{inbox.length}</span>}
               </button>
-              <button onClick={() => setShowAllQuotesModal(true)} className={'p-3 md:p-3.5 rounded-full border text-amber-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title="Cytaty"><Quote className="w-5 h-5 md:w-6 md:h-6" /></button>
+              <button onClick={() => setShowAllQuotesModal(true)} className={'p-3 md:p-3.5 rounded-full border text-amber-500 active:scale-95 transition-all shadow-md ' + tStyle.cardBg} title={t('Cytaty')}><Quote className="w-5 h-5 md:w-6 md:h-6" /></button>
             </div>
           </header>
 
@@ -2366,7 +2462,7 @@ const handleWizardNext = () => {
           <div className="grid grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8">
             <div className={'p-5 md:p-6 rounded-3xl border flex flex-col justify-between shadow-sm ' + tStyle.cardBg}>
               <div className={'flex items-center justify-between mb-2 ' + tStyle.subText}>
-                <span className={currentFontConfig.smallClass + ' md:text-sm font-medium'}>Postęp dzisiejszy</span>
+                <span className={currentFontConfig.smallClass + ' md:text-sm font-medium'}>{t('Postęp dzisiejszy')}</span>
                 <Zap className="w-5 h-5 text-emerald-500" />
               </div>
               <div className={currentFontConfig.headerClass + ' font-bold mb-3 ' + tStyle.titleText}>{progressPercent}%</div>
@@ -2376,26 +2472,26 @@ const handleWizardNext = () => {
             </div>
             <div className={'p-5 md:p-6 rounded-3xl border flex flex-col justify-between shadow-sm ' + tStyle.cardBg}>
               <div className={'flex items-center justify-between mb-2 ' + tStyle.subText}>
-                <span className={currentFontConfig.smallClass + ' md:text-sm font-medium'}>Dzisiejsze PKT</span>
+                <span className={currentFontConfig.smallClass + ' md:text-sm font-medium'}>{t('Dzisiejsze PKT')}</span>
                 <Trophy className="w-5 h-5 text-amber-500" />
               </div>
-              <div className={currentFontConfig.headerClass + ' font-bold text-amber-500 mb-1'}>+{earnedPKTToday} PKT</div>
-              <span className={currentFontConfig.smallClass + ' md:text-sm ' + tStyle.subText}>Poziom {levelInfo.level} ({levelInfo.name})</span>
+              <div className={currentFontConfig.headerClass + ' font-bold text-amber-500 mb-1'}>+{earnedPKTToday} {t('PKT')}</div>
+              <span className={currentFontConfig.smallClass + ' md:text-sm ' + tStyle.subText}>{t('Poziom {{level}} ({{name}})', { level: levelInfo.level, name: t(levelInfo.name) })}</span>
             </div>
           </div>
 
           <div className="p-4 md:p-5 rounded-3xl border border-amber-500/30 bg-amber-500/10 mb-6 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <h2 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider text-amber-500 flex items-center gap-2'}>
-                <Star className="w-5 h-5 fill-amber-500" /> 3 najważniejsze zadania
+                <Star className="w-5 h-5 fill-amber-500" /> {t('3 najważniejsze zadania')}
               </h2>
               <div className="flex items-center gap-2">
-                <button onClick={() => setShowDailyPlanning(true)} className={currentFontConfig.smallClass + ' font-bold text-amber-500 hover:underline'}>Zmień plan</button>
+                <button onClick={() => setShowDailyPlanning(true)} className={currentFontConfig.smallClass + ' font-bold text-amber-500 hover:underline'}>{t('Zmień plan')}</button>
                 <span className={currentFontConfig.smallClass + ' font-bold text-amber-500'}>{priorityTasks.length}/3</span>
               </div>
             </div>
             {priorityTasks.length === 0 ? (
-              <p className={currentFontConfig.smallClass + ' py-2 ' + tStyle.subText}>W menu zadania wybierz „Ustaw jako priorytet”.</p>
+              <p className={currentFontConfig.smallClass + ' py-2 ' + tStyle.subText}>{t('W menu zadania wybierz „Ustaw jako priorytet”.')}</p>
             ) : (
               <div className="space-y-2">
                 {priorityTasks.map((task, index) => {
@@ -2407,7 +2503,7 @@ const handleWizardNext = () => {
                         <span className={'font-medium flex-1 ' + tStyle.titleText + (isDone ? ' line-through' : '')}>{task.title}</span>
                         {isDone ? <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /> : <Circle className="w-5 h-5 text-amber-500 shrink-0" />}
                       </button>
-                      <button onClick={() => toggleTaskPriority(task.id)} className="p-2 rounded-xl text-amber-500 hover:bg-amber-500/20" title="Usuń z priorytetów"><Star className="w-4 h-4 fill-amber-500" /></button>
+                      <button onClick={() => toggleTaskPriority(task.id)} className="p-2 rounded-xl text-amber-500 hover:bg-amber-500/20" title={t('Usuń z priorytetów')}><Star className="w-4 h-4 fill-amber-500" /></button>
                     </div>
                   );
                 })}
@@ -2421,7 +2517,7 @@ const handleWizardNext = () => {
                 <div className="flex items-center gap-2 flex-1">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                   <h2 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider ' + tStyle.titleText}>
-                    {priorityTasks.length > 0 ? 'Pozostałe zadania na dzisiaj' : 'Zadania na dzisiaj'}
+                    {t(priorityTasks.length > 0 ? 'Pozostałe zadania na dzisiaj' : 'Zadania na dzisiaj')}
                   </h2>
                   <span className={currentFontConfig.smallClass + ' ml-1 ' + tStyle.subText}>
                     ({priorityTasks.length > 0 ? regularCompletedTodayCount : completedTodayCount}/{priorityTasks.length > 0 ? regularTodayTasks.length : allTodayTasks.length})
@@ -2431,7 +2527,7 @@ const handleWizardNext = () => {
 
               <div className="mt-4 pt-3 border-t border-slate-500/25 space-y-3 animate-fadeIn">
                 {regularTodayTasks.length === 0 ? (
-                    <p className={'text-center py-3 opacity-60 ' + currentFontConfig.smallClass + ' ' + tStyle.subText}>{priorityTasks.length > 0 ? 'Brak pozostałych zadań na dziś.' : 'Brak zadań na dziś.'}</p>
+                    <p className={'text-center py-3 opacity-60 ' + currentFontConfig.smallClass + ' ' + tStyle.subText}>{t(priorityTasks.length > 0 ? 'Brak pozostałych zadań na dziś.' : 'Brak zadań na dziś.')}</p>
                 ) : (
 <div className="space-y-3">
                      {regularTodayTasks.map((task) => {
@@ -2479,19 +2575,19 @@ const handleWizardNext = () => {
                                      <span className={'font-medium block ' + tStyle.titleText + (isDone ? ' line-through opacity-75' : '')}>{task.title}</span>
                                      
                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cTheme.bg} ${cTheme.text} ${cTheme.border}`}>
-                                       {task.category}
+                                       {t(task.category)}
                                      </span>
 
                                      {task.carriedCount > 0 && !isDone && (
                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border bg-violet-500/20 text-violet-500 border-violet-500/40">
-                                         <RefreshCw className="w-3 h-3" /> Przeniesiono ({task.carriedCount})
+                                         <RefreshCw className="w-3 h-3" /> {t('Przeniesiono ({{count}})', { count: task.carriedCount })}
                                        </span>
                                      )}
 
                                      {/* BADGE OPÓŹNIENIA */}
                                      {isOverdue && (
                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border ${overdueDays > 2 ? 'bg-red-500/20 text-red-500 border-red-500/40' : 'bg-amber-500/20 text-amber-500 border-amber-500/40'}`}>
-                                          <AlertTriangle className="w-3 h-3" /> Niezrealizowane od {overdueDays} {overdueDays === 1 ? 'dnia' : 'dni'}
+                                          <AlertTriangle className="w-3 h-3" /> {t(overdueDays === 1 ? 'Niezrealizowane od {{count}} dnia' : 'Niezrealizowane od {{count}} dni', { count: overdueDays })}
                                        </span>
                                      )}
 
@@ -2517,13 +2613,13 @@ const handleWizardNext = () => {
                                      )}
                                      {dailyStreak > 0 && (
                                        <span className="bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                         <Flame className="w-3 h-3 fill-orange-500" /> {dailyStreak} dni z rzędu
+                                         <Flame className="w-3 h-3 fill-orange-500" /> {t('{{count}} dni z rzędu', { count: dailyStreak })}
                                        </span>
                                      )}
                                    </div>
                                    <span className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
-                                     {!task.repeat || task.repeat === 'once' ? 'Jednorazowe' : task.repeat === 'daily' ? 'Codziennie' : task.repeat === 'interval' ? 'Co ' + task.intervalDays + ' dni' : 'Niestandardowe dni'} 
-                                     {task.duration > 0 ? ' • ' + task.duration + ' min' : ''} • +{task.pkt || 20} PKT
+                                     {t(!task.repeat || task.repeat === 'once' ? 'Jednorazowe' : task.repeat === 'daily' ? 'Codziennie' : task.repeat === 'interval' ? 'Co {{count}} dni' : 'Niestandardowe dni', { count: task.intervalDays })}
+                                     {task.duration > 0 ? ` • ${task.duration} ${t('min')}` : ''} • +{task.pkt || 20} {t('PKT')}
                                    </span>
                                  </div>
                                </div>
@@ -2549,7 +2645,7 @@ const handleWizardNext = () => {
                                        }}
                                        className={"flex items-center gap-2 px-3 py-2.5 hover:bg-amber-500/10 transition-colors " + tStyle.subText + " hover:text-amber-500 text-sm font-medium"}
                                      >
-                                       <Star className={'w-4 h-4 ' + (task.isPriority && task.priorityDate === todayStr ? 'fill-amber-500 text-amber-500' : '')} /> {task.isPriority && task.priorityDate === todayStr ? 'Usuń z priorytetów' : 'Ustaw jako priorytet'}
+                                       <Star className={'w-4 h-4 ' + (task.isPriority && task.priorityDate === todayStr ? 'fill-amber-500 text-amber-500' : '')} /> {t(task.isPriority && task.priorityDate === todayStr ? 'Usuń z priorytetów' : 'Ustaw jako priorytet')}
                                      </button>
                                      <div className="h-px bg-slate-500/20 w-full" />
                                      <button 
@@ -2560,7 +2656,7 @@ const handleWizardNext = () => {
                                        }}
                                        className={"flex items-center gap-2 px-3 py-2.5 hover:bg-slate-500/10 transition-colors " + tStyle.subText + " hover:text-amber-500 text-sm font-medium"}
                                      >
-                                       <Edit3 className="w-4 h-4" /> Edytuj
+                                       <Edit3 className="w-4 h-4" /> {t('Edytuj')}
                                      </button>
                                      <div className="h-px bg-slate-500/20 w-full" />
                                      <button 
@@ -2572,7 +2668,7 @@ const handleWizardNext = () => {
                                        }}
                                        className={"flex items-center gap-2 px-3 py-2.5 hover:bg-red-500/10 transition-colors " + tStyle.subText + " hover:text-red-500 text-sm font-medium"}
                                      >
-                                       <Trash2 className="w-4 h-4" /> Usuń
+                                       <Trash2 className="w-4 h-4" /> {t('Usuń')}
                                      </button>
                                    </div>
                                  )}
@@ -2602,7 +2698,7 @@ const handleWizardNext = () => {
                   <div className="flex items-center gap-2 flex-1">
                     <Activity className="w-5 h-5 text-amber-500" />
                     <h2 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400'}>
-                      Zarejestrowane Aktywności
+                      {t('Zarejestrowane Aktywności')}
                     </h2>
                     <span className={currentFontConfig.smallClass + ' ml-1 ' + tStyle.subText}>
                       ({workouts.filter(w => w.date === todayStr).length})
@@ -2613,8 +2709,8 @@ const handleWizardNext = () => {
                 <div className="mt-4 pt-3 border-t border-slate-500/25 space-y-3 animate-fadeIn">
                   <div className="space-y-3">
                     {workouts.filter(w => w.date === todayStr).map((w) => {
-                      let typeName = w.type === 'run' ? 'Bieg' : w.type === 'pushups' ? 'Pompki' : w.type === 'pullups' ? 'Drążek' : w.type === 'squats' ? 'Przysiady' : w.type === 'situps' ? 'Brzuszki' : w.type === 'bike' ? 'Rower' : w.type === 'gym' ? 'Siłownia' : w.type === 'walk_km' ? 'Spacer' : w.type === 'steps' ? 'Kroki' : w.type === 'study' ? 'Nauka' : w.type === 'read_book' ? 'Książka' : w.type === 'read_chapters' ? 'Książka (rozdziały)' : w.type === 'no_sweets' ? 'Dni bez słodyczy' : 'Spacer (czas)';
-                      const workoutName = w.customTitle ? `${typeName} (${w.customTitle}): ${w.amount} ${w.unit}` : `${typeName}: ${w.amount} ${w.unit}`;
+                      let typeName = w.type === 'run' ? 'Bieg' : w.type === 'pushups' ? 'Pompki' : w.type === 'pullups' ? 'Drążek' : w.type === 'squats' ? 'Przysiady' : w.type === 'situps' ? 'Brzuszki' : w.type === 'bike' ? 'Rower' : w.type === 'gym' ? 'Siłownia' : w.type === 'walk_km' ? 'Spacer' : w.type === 'steps' ? 'Kroki' : w.type === 'study' ? 'Nauka' : w.type === 'small_steps' ? 'Małe kroki' : w.type === 'read_book' ? 'Książka' : w.type === 'read_chapters' ? 'Książka (rozdziały)' : w.type === 'no_sweets' ? 'Dni bez słodyczy' : 'Spacer (czas)';
+                      const workoutName = w.customTitle ? `${t(typeName)} (${w.customTitle}): ${w.amount} ${t(w.unit)}` : `${t(typeName)}: ${w.amount} ${t(w.unit)}`;
                       return (
                         <div key={w.id} className={'flex items-center justify-between p-3.5 rounded-2xl border bg-slate-500/5 border-slate-500/20 shadow-sm'}>
                           <div className="flex items-center gap-3">
@@ -2623,7 +2719,7 @@ const handleWizardNext = () => {
                             </div>
                             <div>
                               <span className={'font-bold block ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>{workoutName}</span>
-                              <span className={currentFontConfig.smallClass + ' text-amber-600 dark:text-amber-400 font-bold'}>+{w.pkt} PKT</span>
+                              <span className={currentFontConfig.smallClass + ' text-amber-600 dark:text-amber-400 font-bold'}>+{w.pkt} {t('PKT')}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 ml-2">
@@ -2644,7 +2740,7 @@ const handleWizardNext = () => {
                   <div className="flex items-center gap-2 flex-1">
                     <CalendarIcon className="w-5 h-5 text-violet-500" />
                     <h2 className={currentFontConfig.smallClass + ' md:text-sm font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400'}>
-                      Zadania zaplanowane do 2 dni
+                      {t('Zadania zaplanowane do 2 dni')}
                     </h2>
                     <span className={currentFontConfig.smallClass + ' ml-1 ' + tStyle.subText}>
                       ({upcomingTasks.length})
@@ -2659,7 +2755,7 @@ const handleWizardNext = () => {
                       {upcomingTasks.map(task => {
                         const isTomorrow = taskAppliesToDate(task, tomorrowStr) && !isTaskDoneForDate(task, tomorrowStr);
                         const targetD = isTomorrow ? tomorrowStr : dayAfterStr;
-                        const dayLabel = isTomorrow ? 'Jutro' : 'Pojutrze';
+                        const dayLabel = t(isTomorrow ? 'Jutro' : 'Pojutrze');
                         const associatedGoal = goals.find(g => g.id === task.goalId);
 
                         return (
@@ -2682,7 +2778,7 @@ const handleWizardNext = () => {
                                   )}
                                 </div>
                                 <span className={currentFontConfig.smallClass + ' ' + tStyle.subText}>
-                                  Kategoria: {task.category} • +{task.pkt || 20} PKT
+                                  {t('Kategoria: {{category}} • +{{points}} PKT', { category: t(task.category), points: task.pkt || 20 })}
                                 </span>
                               </div>
                             </div>
@@ -2701,19 +2797,19 @@ const handleWizardNext = () => {
           </div>
 
           <section className={'mt-6 p-5 rounded-3xl border shadow-sm ' + (isTodayClosed ? 'bg-emerald-500/10 border-emerald-500/30' : tStyle.cardBg)}>
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col items-start gap-4">
               <div>
                 <h2 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + (todayReview ? 'text-emerald-500' : tStyle.titleText)}>
-                  {isTodayClosed ? 'Dzień zamknięty ✓' : 'Gotowy zakończyć dzień?'}
+                  {t(isTodayClosed ? 'Dzień zamknięty ✓' : 'Gotowy zakończyć dzień?')}
                 </h2>
                 <p className={currentFontConfig.smallClass + ' mt-1 ' + tStyle.subText}>
                   {isTodayClosed
-                    ? (todayReview.reflection || 'Podsumowanie i decyzje zostały zapisane.')
-                    : 'Uporządkuj niewykonane zadania i zapisz jedno zdanie refleksji.'}
+                    ? (todayReview.reflection || t('Podsumowanie i decyzje zostały zapisane.'))
+                    : t('Uporządkuj niewykonane zadania i zapisz jedno zdanie refleksji.')}
                 </p>
               </div>
-              <button onClick={() => setShowCloseDayModal(true)} className={'shrink-0 px-4 py-3 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' ' + (todayReview ? tStyle.modalBtnBg : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950')}>
-                {isTodayClosed ? 'Edytuj' : todayReview?.draft ? 'Kontynuuj' : 'Zamknij dzień'}
+              <button onClick={() => setShowCloseDayModal(true)} className={'self-start px-4 py-3 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' ' + (todayReview ? tStyle.modalBtnBg : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950')}>
+                {t(isTodayClosed ? 'Edytuj' : todayReview?.draft ? 'Kontynuuj' : 'Zamknij dzień')}
               </button>
             </div>
           </section>
@@ -2809,6 +2905,19 @@ const handleWizardNext = () => {
         tStyle={tStyle}
       />
 
+      {showOnboarding && (
+        <OnboardingModal
+          isOpen
+          initialName={userName}
+          categories={categories}
+          canClose={tasks.length > 0 || goals.length > 0 || localStorage.getItem('discipline_onboarding_completed') === 'true'}
+          onComplete={completeOnboarding}
+          onSkip={skipOnboarding}
+          currentFontConfig={currentFontConfig}
+          tStyle={tStyle}
+        />
+      )}
+
       <GoalWizardModal
         showAddGoalModal={showAddGoalModal}
         goalWizardStep={goalWizardStep}
@@ -2895,6 +3004,7 @@ const handleWizardNext = () => {
         importFileRef={importFileRef}
         importDataFromJson={importDataFromJson}
         setShowResetConfirmModal={setShowResetConfirmModal}
+        onStartOnboarding={() => { setShowSettingsModal(false); setShowOnboarding(true); }}
       />
 
       <TaskModals
@@ -2941,58 +3051,58 @@ const handleWizardNext = () => {
           <div className={'w-full max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-500/20">
               <h3 className={currentFontConfig.sizeClass + ' font-bold flex items-center gap-2 text-orange-500'}>
-                <Dumbbell className="w-5 h-5"/> Zarejestruj multitrening {multiWorkoutStep === 1 ? '(1/2)' : '(2/2)'}
+                <Dumbbell className="w-5 h-5"/> {t('Zarejestruj multitrening')} {multiWorkoutStep === 1 ? '(1/2)' : '(2/2)'}
               </h3>
               <button onClick={() => setShowAddWorkoutModal(false)} className={'p-1.5 rounded-full hover:bg-slate-500/20 transition-colors'}><X className="w-5 h-5"/></button>
             </div>
             
             {multiWorkoutStep === 1 ? (
               <div className="space-y-5 animate-fadeIn">
-                <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}><strong>Krok 1:</strong> Zaznacz wszystkie aktywności, które dzisiaj wykonałeś.</p>
+                <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}><strong>{t('Krok 1:')}</strong> {t('Zaznacz wszystkie aktywności, które dzisiaj wykonałeś.')}</p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                   {GOAL_CATEGORIES_CONFIG.sport.types.map(t => {
-                      const isActive = selectedSportWorkouts[t.id] !== undefined;
+                   {GOAL_CATEGORIES_CONFIG.sport.types.map(activityType => {
+                      const isActive = selectedSportWorkouts[activityType.id] !== undefined;
                       return (
                          <div 
-                           key={t.id} 
+                           key={activityType.id}
                            onClick={() => {
-                               if(isActive) { const n = {...selectedSportWorkouts}; delete n[t.id]; setSelectedSportWorkouts(n); }
-                               else { setSelectedSportWorkouts({...selectedSportWorkouts, [t.id]: ''}) }
+                               if(isActive) { const n = {...selectedSportWorkouts}; delete n[activityType.id]; setSelectedSportWorkouts(n); }
+                               else { setSelectedSportWorkouts({...selectedSportWorkouts, [activityType.id]: ''}) }
                            }} 
                            className={'p-4 rounded-2xl border transition-all cursor-pointer text-center flex flex-col items-center justify-center min-h-[100px] ' + (isActive ? 'bg-orange-500/10 border-orange-500 text-orange-500 ring-2 ring-orange-500/50 shadow-md scale-[1.02]' : 'bg-slate-500/5 border-slate-500/20 hover:bg-slate-500/10')}
                          >
                             <div className={"transition-all duration-300 " + (isActive ? 'drop-shadow-lg' : 'grayscale opacity-50')}>
-                                {getTypeIcon(t.id)}
+                                {getTypeIcon(activityType.id)}
                             </div>
-                            <span className={currentFontConfig.smallClass + ' font-bold leading-tight ' + (isActive ? 'text-orange-500' : tStyle.titleText)}>{t.label.split(' (')[0]}</span>
+                            <span className={currentFontConfig.smallClass + ' font-bold leading-tight ' + (isActive ? 'text-orange-500' : tStyle.titleText)}>{t(activityType.label).split(' (')[0]}</span>
                          </div>
                       )
                    })}
                 </div>
                 <div className="flex gap-3 pt-4 border-t border-slate-500/20">
-                  <button type="button" onClick={() => setShowAddWorkoutModal(false)} className={'flex-1 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
-                  <button type="button" disabled={Object.keys(selectedSportWorkouts).length === 0} onClick={() => setMultiWorkoutStep(2)} className={'flex-1 bg-orange-500 hover:bg-orange-400 text-slate-950 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold disabled:opacity-50 disabled:active:scale-100 shadow-lg shadow-orange-500/20'}>Dalej</button>
+                  <button type="button" onClick={() => setShowAddWorkoutModal(false)} className={'flex-1 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Anuluj')}</button>
+                  <button type="button" disabled={Object.keys(selectedSportWorkouts).length === 0} onClick={() => setMultiWorkoutStep(2)} className={'flex-1 bg-orange-500 hover:bg-orange-400 text-slate-950 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold disabled:opacity-50 disabled:active:scale-100 shadow-lg shadow-orange-500/20'}>{t('Dalej')}</button>
                 </div>
               </div>
             ) : (
               <form onSubmit={handleMultiWorkoutSubmit} className="space-y-5 animate-fadeIn">
-                <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}><strong>Krok 2:</strong> Wpisz dokładne wartości dla zaznaczonych aktywności.</p>
+                <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}><strong>{t('Krok 2:')}</strong> {t('Wpisz dokładne wartości dla zaznaczonych aktywności.')}</p>
                 <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-2 pb-2">
-                   {GOAL_CATEGORIES_CONFIG.sport.types.filter(t => selectedSportWorkouts[t.id] !== undefined).map((t, idx) => (
-                       <div key={t.id} className={'p-4 rounded-2xl border bg-orange-500/5 border-orange-500/30 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 animate-fadeIn'}>
-                           <span className={currentFontConfig.sizeClass + ' font-bold ' + tStyle.titleText}>🔥 {t.label.split(' (')[0]}</span>
+                   {GOAL_CATEGORIES_CONFIG.sport.types.filter(activityType => selectedSportWorkouts[activityType.id] !== undefined).map((activityType, idx) => (
+                       <div key={activityType.id} className={'p-4 rounded-2xl border bg-orange-500/5 border-orange-500/30 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 animate-fadeIn'}>
+                           <span className={currentFontConfig.sizeClass + ' font-bold ' + tStyle.titleText}>🔥 {t(activityType.label).split(' (')[0]}</span>
                            <div className="relative w-full md:w-1/2">
-                             <input type="number" step="any" autoFocus={idx === 0} placeholder="0" value={selectedSportWorkouts[t.id]} onChange={e => setSelectedSportWorkouts({...selectedSportWorkouts, [t.id]: e.target.value})} className={'w-full py-3 px-4 pr-16 rounded-xl font-bold text-center border focus:border-orange-500 focus:ring-2 focus:ring-orange-500 outline-none ' + tStyle.inputBg} />
-                             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold opacity-50 uppercase">{t.label.match(/\((.*?)\)/)?.[1] || ''}</span>
+                             <input type="number" step="any" autoFocus={idx === 0} placeholder="0" value={selectedSportWorkouts[activityType.id]} onChange={e => setSelectedSportWorkouts({...selectedSportWorkouts, [activityType.id]: e.target.value})} className={'w-full py-3 px-4 pr-16 rounded-xl font-bold text-center border focus:border-orange-500 focus:ring-2 focus:ring-orange-500 outline-none ' + tStyle.inputBg} />
+                             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold opacity-50 uppercase">{t(activityType.label).match(/\((.*?)\)/)?.[1] || ''}</span>
                            </div>
                        </div>
                    ))}
                 </div>
 
                 <div>
-                  <label className={currentFontConfig.smallClass + ' font-medium block mb-2 ' + tStyle.subText}>Powiąż z celem sportowym (opcjonalnie)</label>
+                  <label className={currentFontConfig.smallClass + ' font-medium block mb-2 ' + tStyle.subText}>{t('Powiąż z celem sportowym (opcjonalnie)')}</label>
                   <select value={newWorkoutGoalId} onChange={(e) => setNewWorkoutGoalId(e.target.value)} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-orange-500 ' + tStyle.inputBg}>
-                    <option value="">-- Brak powiązania --</option>
+                    <option value="">{t('-- Brak powiązania --')}</option>
                     {goals.filter(g => g.category === 'Sport' || g.category === 'Zdrowie').map(g => (
                       <option key={g.id} value={g.id}>{g.title}</option>
                     ))}
@@ -3000,8 +3110,8 @@ const handleWizardNext = () => {
                 </div>
                 
                 <div className="flex gap-3 pt-4 border-t border-slate-500/20">
-                  <button type="button" onClick={() => setMultiWorkoutStep(1)} className={'flex-1 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Wstecz</button>
-                  <button type="submit" className={'flex-1 bg-orange-500 hover:bg-orange-400 text-slate-950 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold shadow-lg shadow-orange-500/20'}>Zapisz zestaw</button>
+                  <button type="button" onClick={() => setMultiWorkoutStep(1)} className={'flex-1 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Wstecz')}</button>
+                  <button type="submit" className={'flex-1 bg-orange-500 hover:bg-orange-400 text-slate-950 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold shadow-lg shadow-orange-500/20'}>{t('Zapisz zestaw')}</button>
                 </div>
               </form>
             )}
@@ -3011,46 +3121,46 @@ const handleWizardNext = () => {
       {showAddReadingModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
-            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 flex items-center gap-2 text-sky-500'}><BookOpen className="w-5 h-5"/> Zarejestruj czytanie ("Przeczytałem")</h3>
+            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 flex items-center gap-2 text-sky-500'}><BookOpen className="w-5 h-5"/> {t('Zarejestruj czytanie ("Przeczytałem")')}</h3>
             <form onSubmit={addReading} className="space-y-4">
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Co dzisiaj czytałeś?</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Co dzisiaj czytałeś?')}</label>
                 <select value={readingData.goalId} onChange={(e) => setReadingData({...readingData, goalId: e.target.value, manualTitle: ''})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 ' + tStyle.inputBg}>
-                  <option value="">Wpiszę tytuł ręcznie...</option>
+                  <option value="">{t('Wpiszę tytuł ręcznie...')}</option>
                   {goals.filter(g => g.category === 'Książka').map(g => (
-                    <option key={g.id} value={g.id}>Z celu: {g.title}</option>
+                    <option key={g.id} value={g.id}>{t('Z celu: {{title}}', { title: g.title })}</option>
                   ))}
                 </select>
               </div>
               {!readingData.goalId && (
                 <div>
-                  <input type="text" placeholder="Tytuł książki (np. Władca Pierścieni)" value={readingData.manualTitle} onChange={(e) => setReadingData({...readingData, manualTitle: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 ' + tStyle.inputBg} />
+                  <input type="text" placeholder={t('Tytuł książki (np. Władca Pierścieni)')} value={readingData.manualTitle} onChange={(e) => setReadingData({...readingData, manualTitle: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 ' + tStyle.inputBg} />
                 </div>
               )}
               
               <div className="pt-2 border-t border-slate-500/20">
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-2 ' + tStyle.subText}>Format zapisu</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-2 ' + tStyle.subText}>{t('Format zapisu')}</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setReadingData({...readingData, type: 'read_book'})} className={'py-3 rounded-xl transition-all font-semibold ' + (readingData.type === 'read_book' ? 'bg-sky-500/20 text-sky-500 border-sky-500 ring-2 ring-sky-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Przeczytane Strony</button>
-                  <button type="button" onClick={() => setReadingData({...readingData, type: 'read_chapters'})} className={'py-3 rounded-xl transition-all font-semibold ' + (readingData.type === 'read_chapters' ? 'bg-sky-500/20 text-sky-500 border-sky-500 ring-2 ring-sky-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>Przeczytane Rozdziały</button>
+                  <button type="button" onClick={() => setReadingData({...readingData, type: 'read_book'})} className={'py-3 rounded-xl transition-all font-semibold ' + (readingData.type === 'read_book' ? 'bg-sky-500/20 text-sky-500 border-sky-500 ring-2 ring-sky-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>{t('Przeczytane Strony')}</button>
+                  <button type="button" onClick={() => setReadingData({...readingData, type: 'read_chapters'})} className={'py-3 rounded-xl transition-all font-semibold ' + (readingData.type === 'read_chapters' ? 'bg-sky-500/20 text-sky-500 border-sky-500 ring-2 ring-sky-500' : 'bg-slate-500/10 border-transparent text-slate-400 border')}>{t('Przeczytane Rozdziały')}</button>
                 </div>
               </div>
 
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 text-sky-500'}>{readingData.type === 'read_chapters' ? 'Ile rozdziałów przeczytałeś?' : 'Ile stron przeczytałeś?'}</label>
-                <input type="number" step="any" min="0.1" placeholder="np. 15 (Wymagane)" value={readingData.amount} onChange={(e) => setReadingData({...readingData, amount: e.target.value})} className={'w-full rounded-2xl px-4 py-3 font-bold ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 ' + tStyle.inputBg} />
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 text-sky-500'}>{t(readingData.type === 'read_chapters' ? 'Ile rozdziałów przeczytałeś?' : 'Ile stron przeczytałeś?')}</label>
+                <input type="number" step="any" min="0.1" placeholder={t('np. 15 (Wymagane)')} value={readingData.amount} onChange={(e) => setReadingData({...readingData, amount: e.target.value})} className={'w-full rounded-2xl px-4 py-3 font-bold ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 ' + tStyle.inputBg} />
               </div>
 
               {readingData.type === 'read_chapters' && (
                   <div className="p-3 bg-sky-500/10 border border-sky-500/20 rounded-xl">
-                      <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Liczba stron w tych rozdziałach (opcjonalnie, do statystyk)</label>
+                      <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Liczba stron w tych rozdziałach (opcjonalnie, do statystyk)')}</label>
                       <input type="number" step="any" placeholder="np. 40" value={readingData.optionalPages} onChange={(e) => setReadingData({...readingData, optionalPages: e.target.value})} className={'w-full rounded-xl px-4 py-2.5 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 ' + tStyle.inputBg} />
                   </div>
               )}
 
               <div className="flex gap-3 pt-3 border-t border-slate-500/20">
-                <button type="button" onClick={() => setShowAddReadingModal(false)} className={'flex-1 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
-                <button type="submit" className={'flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>Dodaj do historii</button>
+                <button type="button" onClick={() => setShowAddReadingModal(false)} className={'flex-1 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Anuluj')}</button>
+                <button type="submit" className={'flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 py-3.5 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>{t('Dodaj do historii')}</button>
               </div>
             </form>
           </div>
@@ -3065,15 +3175,15 @@ const handleWizardNext = () => {
                      <Brain className="w-6 h-6" />
                  </div>
                  <div>
-                    <h3 className={currentFontConfig.sizeClass + ' font-bold text-violet-500'}>Zrzut myśli</h3>
-                    <p className="text-xs opacity-70">Opróżnij głowę. Zaplanujesz to później.</p>
+                    <h3 className={currentFontConfig.sizeClass + ' font-bold text-violet-500'}>{t('Zrzut myśli')}</h3>
+                    <p className="text-xs opacity-70">{t('Opróżnij głowę. Zaplanujesz to później.')}</p>
                  </div>
              </div>
              <form onSubmit={addInboxItem}>
-                 <textarea autoFocus rows={3} placeholder="Co Ci chodzi po głowie? (np. odpisać szefowi, kupić białko...)" value={inboxText} onChange={e => setInboxText(e.target.value)} className={'w-full rounded-2xl px-4 py-4 resize-none ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 ' + tStyle.inputBg} />
+                 <textarea autoFocus rows={3} placeholder={t('Co Ci chodzi po głowie? (np. odpisać szefowi, kupić białko...)')} value={inboxText} onChange={e => setInboxText(e.target.value)} className={'w-full rounded-2xl px-4 py-4 resize-none ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 ' + tStyle.inputBg} />
                  <div className="flex gap-3 pt-4 mt-2 border-t border-slate-500/20">
-                    <button type="button" onClick={() => setShowInboxAddModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
-                    <button type="submit" className={'flex-1 bg-violet-500 hover:bg-violet-400 text-white py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold shadow-lg shadow-violet-500/20'}>Wrzuć do Skrzynki</button>
+                    <button type="button" onClick={() => setShowInboxAddModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Anuluj')}</button>
+                    <button type="submit" className={'flex-1 bg-violet-500 hover:bg-violet-400 text-white py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold shadow-lg shadow-violet-500/20'}>{t('Wrzuć do Skrzynki')}</button>
                  </div>
              </form>
           </div>
@@ -3089,8 +3199,8 @@ const handleWizardNext = () => {
                      <Archive className="w-5 h-5" />
                  </div>
                  <div>
-                    <h3 className={currentFontConfig.sizeClass + ' font-bold text-violet-500'}>Skrzynka Odbiorcza</h3>
-                    <p className="text-xs opacity-70">Decyduj, co z tym zrobić (GTD)</p>
+                    <h3 className={currentFontConfig.sizeClass + ' font-bold text-violet-500'}>{t('Skrzynka Odbiorcza')}</h3>
+                    <p className="text-xs opacity-70">{t('Decyduj, co z tym zrobić (GTD)')}</p>
                  </div>
               </div>
               <button onClick={() => setShowInboxListModal(false)} className={'p-2 rounded-full transition-colors ' + tStyle.modalBtnBg}><X className="w-5 h-5" /></button>
@@ -3100,16 +3210,16 @@ const handleWizardNext = () => {
                {inbox.length === 0 ? (
                    <div className="text-center py-10 opacity-50">
                        <Brain className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                       <p>Umysł czysty jak łza. Skrzynka jest pusta.</p>
+                       <p>{t('Umysł czysty jak łza. Skrzynka jest pusta.')}</p>
                    </div>
                ) : (
                    inbox.map(item => (
                        <div key={item.id} className={'p-4 rounded-2xl border bg-slate-500/5 border-slate-500/20 shadow-sm animate-fadeIn'}>
                            <p className={'font-medium mb-3 ' + tStyle.titleText}>{item.text}</p>
-                           <p className="text-[10px] font-mono opacity-50 mb-3">Dodano: {item.createdAt}</p>
+                           <p className="text-[10px] font-mono opacity-50 mb-3">{t('Dodano: {{date}}', { date: item.createdAt })}</p>
                            <div className="flex flex-wrap gap-2">
-                               <button onClick={() => promoteInboxItem(item, false)} className="flex-1 min-w-[120px] bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold py-2 px-3 rounded-xl transition-colors border border-emerald-500/30 flex justify-center items-center gap-1.5"><CheckSquare className="w-3.5 h-3.5"/> Zrób Zadanie</button>
-                               <button onClick={() => promoteInboxItem(item, true)} className="flex-1 min-w-[120px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold py-2 px-3 rounded-xl transition-colors border border-amber-500/30 flex justify-center items-center gap-1.5"><Target className="w-3.5 h-3.5"/> Twórz Cel (RPM)</button>
+                               <button onClick={() => promoteInboxItem(item, false)} className="flex-1 min-w-[120px] bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold py-2 px-3 rounded-xl transition-colors border border-emerald-500/30 flex justify-center items-center gap-1.5"><CheckSquare className="w-3.5 h-3.5"/> {t('Zrób Zadanie')}</button>
+                               <button onClick={() => promoteInboxItem(item, true)} className="flex-1 min-w-[120px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold py-2 px-3 rounded-xl transition-colors border border-amber-500/30 flex justify-center items-center gap-1.5"><Target className="w-3.5 h-3.5"/> {t('Twórz Cel (RPM)')}</button>
                                <button onClick={() => setInbox(inbox.filter(i => i.id !== item.id))} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 p-2 rounded-xl border border-red-500/20 transition-colors"><Trash2 className="w-4 h-4"/></button>
                            </div>
                        </div>
@@ -3118,7 +3228,7 @@ const handleWizardNext = () => {
             </div>
             
             <button onClick={() => { setShowInboxListModal(false); setShowInboxAddModal(true); }} className="w-full mt-4 bg-violet-500 hover:bg-violet-400 text-white font-bold py-3.5 rounded-2xl shadow-lg transition-transform active:scale-95">
-                + Dorzuć nową myśl
+                + {t('Dorzuć nową myśl')}
             </button>
           </div>
         </div>
@@ -3127,44 +3237,45 @@ const handleWizardNext = () => {
       {editingWorkout && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
-            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>Edytuj aktywność</h3>
+            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>{t('Edytuj aktywność')}</h3>
             <form onSubmit={saveEditedWorkout} className="space-y-4">
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Typ aktywności</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Typ aktywności')}</label>
                 <select value={editingWorkout.type} onChange={(e) => setEditingWorkout({...editingWorkout, type: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg}>
-                  <optgroup label="🏃 Sport">
-                    <option value="run">Bieganie (km)</option>
-                    <option value="bike">Rower (km)</option>
-                    <option value="walk_km">Spacer (km)</option>
-                    <option value="pushups">Pompki (powtórzenia)</option>
-                    <option value="pullups">Drążek (powtórzenia)</option>
-                    <option value="squats">Przysiady (powtórzenia)</option>
-                    <option value="situps">Brzuszki (powtórzenia)</option>
-                    <option value="gym">Siłownia (minuty)</option>
+                  <optgroup label={`🏃 ${t('Sport')}`}>
+                    <option value="run">{t('Bieganie (km)')}</option>
+                    <option value="bike">{t('Rower (km)')}</option>
+                    <option value="walk_km">{t('Spacer (km)')}</option>
+                    <option value="pushups">{t('Pompki (powtórzenia)')}</option>
+                    <option value="pullups">{t('Drążek (powtórzenia)')}</option>
+                    <option value="squats">{t('Przysiady (powtórzenia)')}</option>
+                    <option value="situps">{t('Brzuszki (powtórzenia)')}</option>
+                    <option value="gym">{t('Siłownia (minuty)')}</option>
                   </optgroup>
-                  <optgroup label="🧠 Umysł">
-                    <option value="study">Nauka (godziny)</option>
-                    <option value="read_book">Książka (strony)</option>
-                    <option value="read_chapters">Książka (rozdziały)</option>
+                  <optgroup label={`🧠 ${t('Umysł')}`}>
+                    <option value="study">{t('Nauka (godziny)')}</option>
+                    <option value="small_steps">{t('Małe kroki do celu')}</option>
+                    <option value="read_book">{t('Książka (strony)')}</option>
+                    <option value="read_chapters">{t('Książka (rozdziały)')}</option>
                   </optgroup>
-                  <optgroup label="🌿 Zdrowie">
-                    <option value="steps">Kroki (liczba)</option>
-                    <option value="no_sweets">Dni bez słodyczy (dni)</option>
+                  <optgroup label={`🌿 ${t('Zdrowie')}`}>
+                    <option value="steps">{t('Kroki (liczba)')}</option>
+                    <option value="no_sweets">{t('Dni bez słodyczy (dni)')}</option>
                   </optgroup>
                 </select>
               </div>
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Powiąż z celem (opcjonalnie)</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Powiąż z celem (opcjonalnie)')}</label>
                 <select value={editingWorkout.goalId || ''} onChange={(e) => setEditingWorkout({...editingWorkout, goalId: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg}>
-                  <option value="">-- Brak powiązania --</option>
+                  <option value="">{t('-- Brak powiązania --')}</option>
                   {goals.map(g => (
-                    <option key={g.id} value={g.id}>{g.title} ({g.category})</option>
+                    <option key={g.id} value={g.id}>{g.title} ({t(g.category)})</option>
                   ))}
                 </select>
               </div>
               <div>
                 <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>
-                  {editingWorkout.type === 'run' || editingWorkout.type === 'bike' || editingWorkout.type === 'walk_km' ? 'Dystans (km)' : editingWorkout.type === 'pushups' || editingWorkout.type === 'pullups' || editingWorkout.type === 'squats' || editingWorkout.type === 'situps' ? 'Liczba powtórzeń' : editingWorkout.type === 'steps' ? 'Liczba kroków' : editingWorkout.type === 'gym' ? 'Czas (minuty)' : editingWorkout.type === 'study' ? 'Czas (godziny)' : editingWorkout.type === 'read_book' ? 'Liczba stron' : editingWorkout.type === 'read_chapters' ? 'Liczba rozdziałów' : editingWorkout.type === 'no_sweets' ? 'Liczba dni' : 'Wartość'}
+                  {t(editingWorkout.type === 'run' || editingWorkout.type === 'bike' || editingWorkout.type === 'walk_km' ? 'Dystans (km)' : editingWorkout.type === 'pushups' || editingWorkout.type === 'pullups' || editingWorkout.type === 'squats' || editingWorkout.type === 'situps' ? 'Liczba powtórzeń' : editingWorkout.type === 'steps' ? 'Liczba kroków' : editingWorkout.type === 'gym' ? 'Czas (minuty)' : editingWorkout.type === 'study' ? 'Czas (godziny)' : editingWorkout.type === 'small_steps' ? 'Liczba małych kroków' : editingWorkout.type === 'read_book' ? 'Liczba stron' : editingWorkout.type === 'read_chapters' ? 'Liczba rozdziałów' : editingWorkout.type === 'no_sweets' ? 'Liczba dni' : 'Wartość')}
                 </label>
                 <input 
                   type="number" 
@@ -3175,8 +3286,8 @@ const handleWizardNext = () => {
                 />
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setEditingWorkout(null)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
-                <button type="submit" className={'flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>Zapisz zmiany</button>
+                <button type="button" onClick={() => setEditingWorkout(null)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Anuluj')}</button>
+                <button type="submit" className={'flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>{t('Zapisz zmiany')}</button>
               </div>
             </form>
           </div>
@@ -3186,18 +3297,18 @@ const handleWizardNext = () => {
       {showAddActivityModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className={'w-full max-w-md rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
-            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>Zarejestruj postęp (Umysł / Jedzenie)</h3>
+            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>{t('Zarejestruj postęp (Umysł / Jedzenie)')}</h3>
             <form onSubmit={addActivity} className="space-y-4">
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Wybierz cel</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Wybierz cel')}</label>
                 <select 
                   value={activityGoalId} 
                   onChange={(e) => { setActivityGoalId(e.target.value); clearError('activityGoalId'); }} 
                   className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.activityGoalId ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-emerald-500'} ${tStyle.inputBg}`}
                 >
-                  <option value="">-- Wybierz cel (Wymagane) --</option>
+                  <option value="">{t('-- Wybierz cel (Wymagane) --')}</option>
                   {goals.filter(g => g.category === 'Nauka' || g.category === 'Książka' || g.category === 'Zdrowie').map(g => {
-                    const isProgressType = g.type === 'read_book' || g.type === 'read_chapters' || g.type === 'study' || g.type === 'no_sweets';
+                    const isProgressType = g.type === 'read_book' || g.type === 'read_chapters' || g.type === 'study' || g.type === 'no_sweets' || g.type === 'small_steps';
                     let currentVal = 0;
                     if (g.isDaily) {
                         currentVal = workouts.filter(w => w.goalId === g.id && w.date === todayStr).reduce((acc, w) => acc + w.amount, 0);
@@ -3205,26 +3316,26 @@ const handleWizardNext = () => {
                         currentVal = (g.currentPage || 0);
                     }
                     return (
-                      <option key={g.id} value={g.id}>{g.title} (obecnie: {currentVal}/{g.target} {g.type === 'study' ? 'godz.' : g.type === 'no_sweets' ? 'dni' : g.type === 'read_chapters' ? 'rozdziałów' : 'stron'})</option>
+                      <option key={g.id} value={g.id}>{t('{{title}} (obecnie: {{current}}/{{target}} {{unit}})', { title: g.title, current: currentVal, target: g.target, unit: t(g.type === 'study' ? 'godz.' : g.type === 'no_sweets' ? 'dni' : g.type === 'read_chapters' ? 'rozdziałów' : 'stron') })}</option>
                     );
                   })}
                 </select>
               </div>
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Wartość do dodania (strony / rozdziały / godziny / dni)</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Wartość do dodania (strony / rozdziały / godziny / dni)')}</label>
                 <input 
                   type="number" 
                   step="any" 
                   min="0.1" 
-                  placeholder="np. 20 lub 1.5 (Wymagane)" 
+                  placeholder={t('np. 20 lub 1.5 (Wymagane)')}
                   value={activityPages} 
                   onChange={(e) => { setActivityPages(e.target.value); clearError('activityPages'); }} 
                   className={`w-full rounded-2xl px-4 py-3 ${currentFontConfig.sizeClass} focus:outline-none transition-all ${formErrors.activityPages ? 'border-red-500 ring-2 ring-red-500' : 'border-slate-500/20 focus:border-emerald-500'} ${tStyle.inputBg}`} 
                 />
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowAddActivityModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
-                <button type="submit" className={'flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>Zapisz</button>
+                <button type="button" onClick={() => setShowAddActivityModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Anuluj')}</button>
+                <button type="submit" className={'flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>{t('Zapisz')}</button>
               </div>
             </form>
           </div>
@@ -3234,10 +3345,10 @@ const handleWizardNext = () => {
       {editingGoal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className={'w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
-            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>Edytuj cel</h3>
+            <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 ' + tStyle.titleText}>{t('Edytuj cel')}</h3>
             <form onSubmit={saveEditedGoal} className="space-y-4">
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Tytuł / Nazwa celu</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Tytuł / Nazwa celu')}</label>
                 <input 
                   type="text" 
                   value={editingGoal.title} 
@@ -3249,19 +3360,19 @@ const handleWizardNext = () => {
               <div className="pt-2 border-t border-slate-500/20">
                 <label className="flex items-center gap-2 cursor-pointer mb-2">
                   <input type="checkbox" checked={editingGoal.isDaily || false} onChange={(e) => setEditingGoal({ ...editingGoal, isDaily: e.target.checked, dueDate: e.target.checked ? null : editingGoal.dueDate })} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" />
-                  <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>Codziennie (odnawia się każdego dnia)</span>
+                  <span className={currentFontConfig.smallClass + ' font-medium ' + tStyle.subText}>{t('Codziennie (odnawia się każdego dnia)')}</span>
                 </label>
               </div>
 
-              {(!editingGoal.isDaily && (editingGoal.type === 'read_book' || editingGoal.type === 'read_chapters' || editingGoal.type === 'study' || editingGoal.type === 'no_sweets')) && (
+              {(!editingGoal.isDaily && (editingGoal.type === 'read_book' || editingGoal.type === 'read_chapters' || editingGoal.type === 'study' || editingGoal.type === 'no_sweets' || editingGoal.type === 'small_steps')) && (
                 <div>
-                  <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Aktualny postęp (ręczny)</label>
+                  <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Aktualny postęp (ręczny)')}</label>
                   <input type="number" step="any" min="0" value={editingGoal.currentPage || 0} onChange={(e) => setEditingGoal({ ...editingGoal, currentPage: parseFloat(e.target.value) || 0 })} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
                 </div>
               )}
               
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Docelowa wartość {editingGoal.isDaily ? '(na dzień)' : ''}</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Docelowa wartość')} {editingGoal.isDaily ? t('(na dzień)') : ''}</label>
                 <input 
                   type="number" 
                   step="any" 
@@ -3271,16 +3382,16 @@ const handleWizardNext = () => {
                 />
               </div>
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + (editingGoal.isDaily ? 'opacity-50 ' : '') + tStyle.subText}>Termin realizacji</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + (editingGoal.isDaily ? 'opacity-50 ' : '') + tStyle.subText}>{t('Termin realizacji')}</label>
                 <input disabled={editingGoal.isDaily} type="date" value={editingGoal.dueDate || ''} onChange={(e) => setEditingGoal({ ...editingGoal, dueDate: e.target.value })} className={'w-full max-w-full box-border appearance-none rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg + (editingGoal.isDaily ? ' opacity-50 cursor-not-allowed' : '')} style={{ WebkitAppearance: 'none' }} />
               </div>
               <div>
-                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Komentarz / Motywacja</label>
+                <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Komentarz / Motywacja')}</label>
                 <input type="text" value={editingGoal.comment || ''} onChange={(e) => setEditingGoal({ ...editingGoal, comment: e.target.value })} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-amber-500 ' + tStyle.inputBg} />
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setEditingGoal(null)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
-                <button type="submit" className={'flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>Zapisz zmiany</button>
+                <button type="button" onClick={() => setEditingGoal(null)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Anuluj')}</button>
+                <button type="submit" className={'flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold'}>{t('Zapisz zmiany')}</button>
               </div>
             </form>
           </div>
@@ -3293,20 +3404,20 @@ const handleWizardNext = () => {
             <div className="flex justify-between items-center mb-6 pb-3 border-b border-slate-500/20">
               <div className="flex items-center gap-2">
                 <Quote className="w-6 h-6 text-amber-500" />
-                <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>Inspirujące cytaty motywacyjne</h3>
+                <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>{t('Inspirujące cytaty motywacyjne')}</h3>
               </div>
               <button onClick={() => setShowAllQuotesModal(false)} className={'p-2 rounded-full transition-colors ' + tStyle.modalBtnBg}><X className="w-5 h-5" /></button>
             </div>
             <div className="space-y-4 flex-1 overflow-y-auto pr-1">
               {QUOTES.map((q, idx) => (
                 <div key={idx} className={'p-4 rounded-2xl border bg-amber-500/5 border-amber-500/20'}>
-                  <p className={'font-medium italic mb-1.5 ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>"{q.quote}"</p>
+                  <p className={'font-medium italic mb-1.5 ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>"{language === 'en' ? q.quoteEn : q.quote}"</p>
                   <p className={currentFontConfig.smallClass + ' text-amber-500 font-semibold text-right'}>— {q.author}</p>
                 </div>
               ))}
             </div>
             <div className="mt-6 pt-4 border-t border-slate-500/20">
-              <button onClick={() => setShowAllQuotesModal(false)} className={'w-full py-3.5 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Zamknij</button>
+              <button onClick={() => setShowAllQuotesModal(false)} className={'w-full py-3.5 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Zamknij')}</button>
             </div>
           </div>
         </div>
@@ -3363,14 +3474,14 @@ const handleWizardNext = () => {
         tStyle={tStyle}
       />
 
-      {quoteModal.show && quoteModal.data && (
+      {!showOnboarding && quoteModal.show && quoteModal.data && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-5 z-[200] animate-fadeIn">
           <div className={'w-full max-w-md rounded-3xl p-8 shadow-2xl relative text-center border ' + tStyle.modalBg}>
             <div className="w-14 h-14 bg-amber-500/20 border border-amber-500/40 rounded-2xl flex items-center justify-center mx-auto mb-5 text-amber-500 shadow-inner"><Quote className="w-7 h-7" /></div>
-            <span className={currentFontConfig.smallClass + ' md:text-sm font-bold uppercase tracking-widest text-amber-500 block mb-2'}>Cytat na dziś</span>
-            <p className={currentFontConfig.sizeClass + ' md:text-xl font-medium leading-relaxed mb-4 ' + tStyle.titleText}>"{quoteModal.data.quote}"</p>
+            <span className={currentFontConfig.smallClass + ' md:text-sm font-bold uppercase tracking-widest text-amber-500 block mb-2'}>{t('Cytat na dziś')}</span>
+            <p className={currentFontConfig.sizeClass + ' md:text-xl font-medium leading-relaxed mb-4 ' + tStyle.titleText}>"{language === 'en' ? quoteModal.data.quoteEn : quoteModal.data.quote}"</p>
             <p className={currentFontConfig.smallClass + ' md:text-base font-semibold text-amber-500 mb-8'}>— {quoteModal.data.author}</p>
-            <button onClick={closeQuoteModal} className={'w-full bg-amber-500 hover:bg-amber-400 text-slate-950 py-3.5 rounded-2xl font-bold ' + currentFontConfig.sizeClass + ' transition-transform active:scale-95 shadow-lg shadow-amber-500/25'}>Zaczynamy dzień! ⚡</button>
+            <button onClick={closeQuoteModal} className={'w-full bg-amber-500 hover:bg-amber-400 text-slate-950 py-3.5 rounded-2xl font-bold ' + currentFontConfig.sizeClass + ' transition-transform active:scale-95 shadow-lg shadow-amber-500/25'}>{t('Zaczynamy dzień! ⚡')}</button>
           </div>
         </div>
       )}
@@ -3384,8 +3495,8 @@ const handleWizardNext = () => {
                   <ShieldCheck className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>Spis Rang</h3>
-                  <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Droga wojownika</p>
+                  <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>{t('Spis Rang')}</h3>
+                  <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>{t('Droga wojownika')}</p>
                 </div>
               </div>
               <button onClick={() => setShowRanksModal(false)} className={'p-2 rounded-full transition-colors ' + tStyle.modalBtnBg}><X className="w-5 h-5" /></button>
@@ -3398,16 +3509,16 @@ const handleWizardNext = () => {
                 return (
                   <div key={idx} className={`p-4 rounded-2xl border flex justify-between items-center ${isCurrent ? 'bg-amber-500/20 border-amber-500/50 shadow-md' : 'bg-slate-500/5 border-slate-500/20'}`}>
                     <div>
-                      <span className={'font-bold block ' + (isCurrent ? 'text-amber-500' : tStyle.titleText)}>{r.name}</span>
-                      <span className={currentFontConfig.smallClass + ' opacity-70 ' + tStyle.subText}>Poziomy: {r.minLevel} - {maxLvl}</span>
+                      <span className={'font-bold block ' + (isCurrent ? 'text-amber-500' : tStyle.titleText)}>{t(r.name)}</span>
+                      <span className={currentFontConfig.smallClass + ' opacity-70 ' + tStyle.subText}>{t('Poziomy: {{min}} - {{max}}', { min: r.minLevel, max: maxLvl })}</span>
                     </div>
-                    {isCurrent && <span className="text-[10px] font-bold uppercase bg-amber-500 text-slate-900 px-2 py-1 rounded-full">Obecna</span>}
+                    {isCurrent && <span className="text-[10px] font-bold uppercase bg-amber-500 text-slate-900 px-2 py-1 rounded-full">{t('Obecna')}</span>}
                   </div>
                 )
               })}
             </div>
             <div className="mt-2 pt-4 border-t border-slate-500/25">
-              <button onClick={() => setShowRanksModal(false)} className={'w-full py-3.5 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Zamknij</button>
+              <button onClick={() => setShowRanksModal(false)} className={'w-full py-3.5 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Zamknij')}</button>
             </div>
           </div>
         </div>
@@ -3421,8 +3532,8 @@ const handleWizardNext = () => {
               <div className="w-16 h-16 mx-auto bg-violet-500/20 text-violet-500 flex items-center justify-center rounded-full border border-violet-500/40 mb-3 shadow-[0_0_15px_rgba(139,92,246,0.3)]">
                 <Trophy className="w-8 h-8" />
               </div>
-              <h2 className={'font-bold text-2xl md:text-3xl mb-1 ' + tStyle.titleText}>Raport Bojowy</h2>
-              <p className={currentFontConfig.smallClass + ' font-medium text-violet-500 uppercase tracking-widest'}>Podsumowanie ostatnich 7 dni</p>
+              <h2 className={'font-bold text-2xl md:text-3xl mb-1 ' + tStyle.titleText}>{t('Raport Bojowy')}</h2>
+              <p className={currentFontConfig.smallClass + ' font-medium text-violet-500 uppercase tracking-widest'}>{t('Podsumowanie ostatnich 7 dni')}</p>
             </div>
 
             <div className="flex-1 overflow-y-auto pr-2 space-y-6">
@@ -3436,17 +3547,17 @@ const handleWizardNext = () => {
                           <div className="bg-slate-500/10 p-3 rounded-2xl text-center border border-slate-500/20">
                              <Zap className="w-5 h-5 mx-auto text-emerald-500 mb-1" />
                              <span className="block font-bold text-xl text-emerald-500">{stats.tCount}</span>
-                             <span className="text-[10px] uppercase font-bold opacity-60">Zadań</span>
+                             <span className="text-[10px] uppercase font-bold opacity-60">{t('Zadań')}</span>
                           </div>
                           <div className="bg-slate-500/10 p-3 rounded-2xl text-center border border-slate-500/20">
                              <Activity className="w-5 h-5 mx-auto text-amber-500 mb-1" />
                              <span className="block font-bold text-xl text-amber-500">{stats.wCount}</span>
-                             <span className="text-[10px] uppercase font-bold opacity-60">Aktywności</span>
+                             <span className="text-[10px] uppercase font-bold opacity-60">{t('Aktywności')}</span>
                           </div>
                           <div className="bg-slate-500/10 p-3 rounded-2xl text-center border border-slate-500/20">
                              <Trophy className="w-5 h-5 mx-auto text-violet-500 mb-1" />
                              <span className="block font-bold text-xl text-violet-500">{stats.pts}</span>
-                             <span className="text-[10px] uppercase font-bold opacity-60">Punktów</span>
+                             <span className="text-[10px] uppercase font-bold opacity-60">{t('Punktów')}</span>
                           </div>
                         </>
                     )
@@ -3458,15 +3569,15 @@ const handleWizardNext = () => {
                 if (!insight) return null;
                 return (
                   <div className="bg-sky-500/10 border border-sky-500/30 p-4 rounded-2xl">
-                    <p className={currentFontConfig.smallClass + ' font-bold text-sky-500 mb-1'}>Najczęstsza przeszkoda: {insight.reason} ({insight.count}×)</p>
-                    <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>{insight.suggestion}</p>
+                    <p className={currentFontConfig.smallClass + ' font-bold text-sky-500 mb-1'}>{t('Najczęstsza przeszkoda: {{reason}} ({{count}}×)', { reason: t(insight.reason), count: insight.count })}</p>
+                    <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>{t(insight.suggestion)}</p>
                   </div>
                 );
               })()}
 
               <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl">
                  <p className="text-sm font-bold text-amber-500 italic text-center">
-                    "Nie ma porażek. Są tylko informacje zwrotne, które czynią nas silniejszymi." — Anthony Robbins
+                    {t('„Nie ma porażek. Są tylko informacje zwrotne, które czynią nas silniejszymi.” — Anthony Robbins')}
                  </p>
               </div>
 
@@ -3474,25 +3585,25 @@ const handleWizardNext = () => {
               <div className="space-y-4">
                  <div>
                     <label className={'font-bold block mb-1 flex items-center gap-1.5 ' + currentFontConfig.smallClass + ' ' + tStyle.titleText}>
-                       <Flame className="w-4 h-4 text-emerald-500" /> Największe zwycięstwo
+                       <Flame className="w-4 h-4 text-emerald-500" /> {t('Największe zwycięstwo')}
                     </label>
-                    <p className={'text-xs mb-2 opacity-60 ' + tStyle.subText}>Z czego jesteś najbardziej dumny z ubiegłego tygodnia?</p>
-                    <textarea rows="2" value={weeklyReviewData.success} onChange={e => setWeeklyReviewData({...weeklyReviewData, success: e.target.value})} className={'w-full rounded-xl px-4 py-3 resize-none ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 ' + tStyle.inputBg} placeholder="Nawet małe sukcesy budują momentum..." />
+                    <p className={'text-xs mb-2 opacity-60 ' + tStyle.subText}>{t('Z czego jesteś najbardziej dumny z ubiegłego tygodnia?')}</p>
+                    <textarea rows="2" value={weeklyReviewData.success} onChange={e => setWeeklyReviewData({...weeklyReviewData, success: e.target.value})} className={'w-full rounded-xl px-4 py-3 resize-none ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 ' + tStyle.inputBg} placeholder={t('Nawet małe sukcesy budują momentum...')} />
                  </div>
                  
                  <div>
                     <label className={'font-bold block mb-1 flex items-center gap-1.5 ' + currentFontConfig.smallClass + ' ' + tStyle.titleText}>
-                       <AlertTriangle className="w-4 h-4 text-orange-500" /> Lekcja i Kalibracja
+                       <AlertTriangle className="w-4 h-4 text-orange-500" /> {t('Lekcja i Kalibracja')}
                     </label>
-                    <p className={'text-xs mb-2 opacity-60 ' + tStyle.subText}>Gdzie odpuściłeś? Co musisz poprawić od jutra?</p>
-                    <textarea rows="2" value={weeklyReviewData.improvement} onChange={e => setWeeklyReviewData({...weeklyReviewData, improvement: e.target.value})} className={'w-full rounded-xl px-4 py-3 resize-none ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 ' + tStyle.inputBg} placeholder="Bądź ze sobą bezlitośnie szczery..." />
+                    <p className={'text-xs mb-2 opacity-60 ' + tStyle.subText}>{t('Gdzie odpuściłeś? Co musisz poprawić od jutra?')}</p>
+                    <textarea rows="2" value={weeklyReviewData.improvement} onChange={e => setWeeklyReviewData({...weeklyReviewData, improvement: e.target.value})} className={'w-full rounded-xl px-4 py-3 resize-none ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 ' + tStyle.inputBg} placeholder={t('Bądź ze sobą bezlitośnie szczery...')} />
                  </div>
 
                  <div>
                     <label className={'font-bold block mb-1 flex items-center gap-1.5 ' + currentFontConfig.smallClass + ' ' + tStyle.titleText}>
-                       <Target className="w-4 h-4 text-red-500" /> 3 Ciosy na ten Tydzień
+                       <Target className="w-4 h-4 text-red-500" /> {t('3 Ciosy na ten Tydzień')}
                     </label>
-                    <p className={'text-xs mb-2 opacity-60 ' + tStyle.subText}>Zasada 80/20. Jakie 3 Must-Do pchną Cię najmocniej do przodu?</p>
+                    <p className={'text-xs mb-2 opacity-60 ' + tStyle.subText}>{t('Zasada 80/20. Jakie 3 Must-Do pchną Cię najmocniej do przodu?')}</p>
                     <textarea rows="3" value={weeklyReviewData.priorities} onChange={e => setWeeklyReviewData({...weeklyReviewData, priorities: e.target.value})} className={'w-full rounded-xl px-4 py-3 resize-none ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 ' + tStyle.inputBg} placeholder="1. ...&#10;2. ...&#10;3. ..." />
                  </div>
               </div>
@@ -3501,7 +3612,7 @@ const handleWizardNext = () => {
             
             <div className="mt-6 pt-4 border-t border-slate-500/20">
                <button onClick={() => setShowWeeklyReviewModal(false)} className={'w-full bg-violet-500 hover:bg-violet-400 text-white font-bold py-4 rounded-2xl shadow-lg shadow-violet-500/25 transition-transform active:scale-95 text-lg'}>
-                  Zatwierdź i Zdominuj ten Tydzień! ⚔️
+                  {t('Zatwierdź i Zdominuj ten Tydzień! ⚔️')}
                </button>
             </div>
 
@@ -3518,8 +3629,8 @@ const handleWizardNext = () => {
                      <BookOpen className="w-6 h-6" />
                  </div>
                  <div>
-                    <h3 className={currentFontConfig.sizeClass + ' font-bold text-sky-500'}>Moja Biblioteka</h3>
-                    <p className="text-xs opacity-70">Zarządzaj swoimi lekturami</p>
+                    <h3 className={currentFontConfig.sizeClass + ' font-bold text-sky-500'}>{t('Moja Biblioteka')}</h3>
+                    <p className="text-xs opacity-70">{t('Zarządzaj swoimi lekturami')}</p>
                  </div>
               </div>
               <button onClick={() => setShowBooksModal(false)} className={'p-2 rounded-full transition-colors ' + tStyle.modalBtnBg}><X className="w-5 h-5" /></button>
@@ -3536,28 +3647,28 @@ const handleWizardNext = () => {
                   return (
                      <div key={statusGroup}>
                         <h4 className={'font-bold uppercase tracking-wider mb-3 flex items-center gap-2 ' + currentFontConfig.smallClass + ' ' + groupColor}>
-                           {groupTitle} ({groupBooks.length})
+                           {t(groupTitle)} ({groupBooks.length})
                         </h4>
                         
                         {groupBooks.length === 0 && statusGroup === 'in_progress' ? (
-                           <p className="text-sm opacity-50 italic">Brak książek w trakcie czytania.</p>
+                           <p className="text-sm opacity-50 italic">{t('Brak książek w trakcie czytania.')}</p>
                         ) : (
                            <div className="space-y-2">
                               {groupBooks.map(b => (
                                  <div key={b.id} className={'p-4 rounded-2xl border bg-slate-500/5 border-slate-500/20 shadow-sm flex items-center justify-between gap-3 transition-all'}>
                                     <div>
                                        <p className={'font-bold ' + tStyle.titleText + (b.status === 'read' ? ' line-through opacity-70' : '')}>{b.title}</p>
-                                       {b.totalPages && <p className="text-xs font-mono opacity-60">Stron: {b.totalPages}</p>}
+                                       {b.totalPages && <p className="text-xs font-mono opacity-60">{t('Stron: {{count}}', { count: b.totalPages })}</p>}
                                     </div>
                                     
                                     <div className="flex items-center gap-2">
                                        {b.status !== 'in_progress' && b.status !== 'read' && (
-                                          <button onClick={() => changeBookStatus(b.id, 'in_progress')} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-500 p-2 rounded-xl transition-colors text-xs font-bold" title="Rozpocznij czytanie"><Play className="w-4 h-4"/></button>
+                                          <button onClick={() => changeBookStatus(b.id, 'in_progress')} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-500 p-2 rounded-xl transition-colors text-xs font-bold" title={t('Rozpocznij czytanie')}><Play className="w-4 h-4"/></button>
                                        )}
                                        {b.status !== 'read' && (
-                                          <button onClick={() => changeBookStatus(b.id, 'read')} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 p-2 rounded-xl transition-colors text-xs font-bold" title="Oznacz jako przeczytane"><Check className="w-4 h-4"/></button>
+                                          <button onClick={() => changeBookStatus(b.id, 'read')} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 p-2 rounded-xl transition-colors text-xs font-bold" title={t('Oznacz jako przeczytane')}><Check className="w-4 h-4"/></button>
                                        )}
-                                       <button onClick={() => deleteBook(b.id)} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 p-2 rounded-xl transition-colors" title="Usuń"><Trash2 className="w-4 h-4"/></button>
+                                       <button onClick={() => deleteBook(b.id)} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 p-2 rounded-xl transition-colors" title={t('Usuń')}><Trash2 className="w-4 h-4"/></button>
                                     </div>
                                  </div>
                               ))}
@@ -3570,7 +3681,7 @@ const handleWizardNext = () => {
             
             <div className="pt-4 border-t border-slate-500/20 mt-2">
                <button onClick={() => setShowAddBookModal(true)} className="w-full bg-sky-500 hover:bg-sky-400 text-slate-900 font-bold py-3.5 rounded-2xl shadow-lg shadow-sky-500/20 transition-transform active:scale-95 flex items-center justify-center gap-2">
-                   <Plus className="w-5 h-5" /> Dodaj nową książkę
+                   <Plus className="w-5 h-5" /> {t('Dodaj nową książkę')}
                </button>
             </div>
           </div>
@@ -3580,26 +3691,26 @@ const handleWizardNext = () => {
       {showAddBookModal && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 z-[160] animate-fadeIn">
           <div className={'w-full max-w-sm rounded-3xl p-6 shadow-2xl border ' + tStyle.modalBg}>
-             <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 text-sky-500 flex items-center gap-2'}><BookOpen className="w-5 h-5" /> Nowa Książka</h3>
+             <h3 className={currentFontConfig.sizeClass + ' font-bold mb-4 text-sky-500 flex items-center gap-2'}><BookOpen className="w-5 h-5" /> {t('Nowa Książka')}</h3>
              <form onSubmit={handleAddBook} className="space-y-4">
                  <div>
-                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Tytuł książki</label>
-                    <input autoFocus type="text" placeholder="Wpisz tytuł..." value={newBookData.title} onChange={e => setNewBookData({...newBookData, title: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 ' + tStyle.inputBg} />
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Tytuł książki')}</label>
+                    <input autoFocus type="text" placeholder={t('Wpisz tytuł...')} value={newBookData.title} onChange={e => setNewBookData({...newBookData, title: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 ' + tStyle.inputBg} />
                  </div>
                  <div>
-                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Ilość stron (Opcjonalnie)</label>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Ilość stron (Opcjonalnie)')}</label>
                     <input type="number" placeholder="np. 350" value={newBookData.totalPages} onChange={e => setNewBookData({...newBookData, totalPages: e.target.value})} className={'w-full rounded-2xl px-4 py-3 ' + currentFontConfig.sizeClass + ' focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 ' + tStyle.inputBg} />
                  </div>
                  <div>
-                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>Status</label>
+                    <label className={currentFontConfig.smallClass + ' font-medium block mb-1 ' + tStyle.subText}>{t('Status')}</label>
                     <div className="grid grid-cols-2 gap-2">
-                        <button type="button" onClick={() => setNewBookData({...newBookData, status: 'planned'})} className={'py-2.5 rounded-xl font-bold transition-colors text-xs ' + (newBookData.status === 'planned' ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20')}>W planach</button>
-                        <button type="button" onClick={() => setNewBookData({...newBookData, status: 'in_progress'})} className={'py-2.5 rounded-xl font-bold transition-colors text-xs ' + (newBookData.status === 'in_progress' ? 'bg-sky-500 text-slate-900 shadow-md' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20')}>Od razu czytam</button>
+                        <button type="button" onClick={() => setNewBookData({...newBookData, status: 'planned'})} className={'py-2.5 rounded-xl font-bold transition-colors text-xs ' + (newBookData.status === 'planned' ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20')}>{t('W planach')}</button>
+                        <button type="button" onClick={() => setNewBookData({...newBookData, status: 'in_progress'})} className={'py-2.5 rounded-xl font-bold transition-colors text-xs ' + (newBookData.status === 'in_progress' ? 'bg-sky-500 text-slate-900 shadow-md' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20')}>{t('Od razu czytam')}</button>
                     </div>
                  </div>
                  <div className="flex gap-3 pt-4 mt-2 border-t border-slate-500/20">
-                    <button type="button" onClick={() => setShowAddBookModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>Anuluj</button>
-                    <button type="submit" className={'flex-1 bg-sky-500 hover:bg-sky-400 text-slate-900 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold shadow-lg shadow-sky-500/20'}>Zapisz</button>
+                    <button type="button" onClick={() => setShowAddBookModal(false)} className={'flex-1 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>{t('Anuluj')}</button>
+                    <button type="submit" className={'flex-1 bg-sky-500 hover:bg-sky-400 text-slate-900 py-3 rounded-2xl ' + currentFontConfig.smallClass + ' font-bold shadow-lg shadow-sky-500/20'}>{t('Zapisz')}</button>
                  </div>
              </form>
           </div>
@@ -3612,18 +3723,18 @@ const handleWizardNext = () => {
                 <div className="w-16 h-16 bg-red-500/20 border border-red-500/40 rounded-full flex items-center justify-center mx-auto mb-5 text-red-500 shadow-inner">
                   <AlertTriangle className="w-8 h-8" />
                 </div>
-                <h3 className={currentFontConfig.sizeClass + ' font-bold mb-2 text-red-500'}>Ostrzeżenie Krytyczne</h3>
+                <h3 className={currentFontConfig.sizeClass + ' font-bold mb-2 text-red-500'}>{t('Ostrzeżenie Krytyczne')}</h3>
                 <p className={currentFontConfig.smallClass + ' mb-6 opacity-80 ' + tStyle.titleText}>
-                  Czy na pewno chcesz <strong>bezpowrotnie usunąć</strong> wszystkie swoje cele, zadania, historię i zdobyte trofea? 
+                  {t('Czy na pewno chcesz')} <strong>{t('bezpowrotnie usunąć')}</strong> {t('wszystkie swoje cele, zadania, historię i zdobyte trofea?')}
                   <br/><br/>
-                  Ta operacja całkowicie wyzeruje Twoją aplikację.
+                  {t('Ta operacja całkowicie wyzeruje Twoją aplikację.')}
                 </p>
                 <div className="flex gap-3">
                   <button onClick={() => setShowResetConfirmModal(false)} className={'flex-1 py-3 rounded-2xl font-semibold ' + currentFontConfig.smallClass + ' ' + tStyle.modalBtnBg}>
-                    Anuluj
+                    {t('Anuluj')}
                   </button>
                   <button onClick={executeFactoryReset} className={'flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-2xl font-bold ' + currentFontConfig.smallClass + ' shadow-lg shadow-red-500/30'}>
-                    Tak, kasuj wszystko
+                    {t('Tak, kasuj wszystko')}
                   </button>
                 </div>
               </div>
@@ -3639,7 +3750,7 @@ const handleWizardNext = () => {
             {/* Nagłówek */}
             <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900">
               <h2 className="font-bold text-xl flex items-center gap-2 text-slate-800 dark:text-white">
-                <History className="w-6 h-6 text-blue-500" /> Wczoraj
+                <History className="w-6 h-6 text-blue-500" /> {t('Wczoraj')}
               </h2>
               <button 
                 onClick={() => setShowYesterdayModal(false)} 
@@ -3655,17 +3766,17 @@ const handleWizardNext = () => {
               {/* Sekcja liczbowych statystyk */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 rounded-2xl text-center bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Punkty</p>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{t('Punkty')}</p>
                   <p className="text-3xl font-black text-emerald-500">{yesterdayCalculatedStats?.points || 0}</p>
                 </div>
                 <div className="p-4 rounded-2xl text-center bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Zadania</p>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{t('Zadania')}</p>
                   <p className="text-3xl font-black text-blue-500">{yesterdayCalculatedStats?.doneTasks || 0}<span className="text-lg text-slate-400">/{yesterdayCalculatedStats?.totalTasks || 0}</span></p>
                 </div>
                 <div className="col-span-2 p-4 rounded-2xl text-center bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Kategoria Zdrowie i Sport</p>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{t('Kategoria Zdrowie i Sport')}</p>
                   <p className="text-xl font-bold text-amber-500">
-                     {yesterdayCalculatedStats?.healthDone || 0} na {yesterdayCalculatedStats?.healthTotal || 0} ukończone!
+                     {t('{{done}} na {{total}} ukończone!', { done: yesterdayCalculatedStats?.healthDone || 0, total: yesterdayCalculatedStats?.healthTotal || 0 })}
                   </p>
                 </div>
               </div>
@@ -3674,7 +3785,7 @@ const handleWizardNext = () => {
               <div className="p-5 rounded-2xl bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/30">
                 <div className="flex items-center gap-2 mb-3">
                   <Flame className="w-5 h-5 text-blue-500" />
-                  <span className="font-bold text-sm text-blue-700 dark:text-blue-400">Opinia Trenera</span>
+                  <span className="font-bold text-sm text-blue-700 dark:text-blue-400">{t('Opinia Trenera')}</span>
                 </div>
                 <p className="font-medium italic leading-relaxed text-slate-700 dark:text-slate-300">
                   "{yesterdayReportMessage}"
@@ -3686,7 +3797,7 @@ const handleWizardNext = () => {
                 onClick={() => setShowYesterdayModal(false)}
                 className="w-full py-4 rounded-2xl font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30 active:scale-95"
               >
-                Przyjąłem do wiadomości
+                {t('Przyjąłem do wiadomości')}
               </button>
             </div>
 

@@ -55,7 +55,7 @@ export const calculateTotalPoints = ({ tasks, workouts, goals, todayStr, hasStre
   });
 
   goals.forEach(goal => {
-    const isProgressType = ['read_book', 'read_chapters', 'study', 'no_sweets'].includes(goal.type);
+    const isProgressType = ['read_book', 'read_chapters', 'study', 'no_sweets', 'small_steps'].includes(goal.type);
 
     if (goal.isDaily) {
       const dailySums = {};

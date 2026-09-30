@@ -1804,95 +1804,100 @@ const handleWizardNext = () => {
     }
   };
 
-  const calculateTotalPKTWithPenalties = () => {
-    const allDatesSet = new Set();
+  const calculateTotalPKT = () => {
+    const pointsByDate = new Map();
+    const activeDates = new Set();
+    const trackedDates = new Set([todayStr]);
+    const addPointsForDate = (date, points) => {
+      const safeDate = date || todayStr;
+      trackedDates.add(safeDate);
+      activeDates.add(safeDate);
+      pointsByDate.set(safeDate, (pointsByDate.get(safeDate) || 0) + points);
+    };
+
     tasks.forEach(t => {
-      if (t.createdAt) allDatesSet.add(t.createdAt);
-      if (t.dueDate) allDatesSet.add(t.dueDate);
-      if (t.completedDates) {
-        Object.keys(t.completedDates).forEach(d => {
-          if (t.completedDates[d]) allDatesSet.add(d);
-        });
-      }
-      if (t.completedAt) allDatesSet.add(t.completedAt);
-    });
-    workouts.forEach(w => { if (w.date) allDatesSet.add(w.date); });
-    allDatesSet.add(todayStr);
+      if (t.createdAt) trackedDates.add(t.createdAt);
+      if (t.dueDate) trackedDates.add(t.dueDate);
 
-    const sortedDates = Array.from(allDatesSet).sort();
-    if (sortedDates.length === 0) return 0;
-
-    const startDate = parseLocalDate(sortedDates[0]);
-    const endDate = parseLocalDate(todayStr);
-
-    let rawPkt = 0;
-    tasks.forEach(t => {
       if (t.repeat && t.repeat !== 'once' && t.completedDates) {
         Object.entries(t.completedDates).forEach(([dStr, isDone]) => {
           if (isDone) {
-            let base = t.pkt || 20;
+            const base = t.pkt || 20;
             const hasBonus = checkStreakBonus(t.id, dStr);
-            rawPkt += base + (hasBonus ? 10 : 0);
+            addPointsForDate(dStr, base + (hasBonus ? 10 : 0));
           }
         });
       } else if (t.isCompleted) {
-        rawPkt += (t.pkt || 20);
+        addPointsForDate(t.completedAt || t.dueDate || todayStr, t.pkt || 20);
       }
     });
 
-    workouts.forEach(w => { rawPkt += (w.pkt || 0); });
+    workouts.forEach(w => {
+      if (w.date) trackedDates.add(w.date);
+      addPointsForDate(w.date || todayStr, w.pkt || 0);
+    });
 
     goals.forEach(goal => {
       const isProgressType = goal.type === 'read_book' || goal.type === 'read_chapters' || goal.type === 'study' || goal.type === 'no_sweets';
-      
+
       if (goal.isDaily) {
-          const dailySums = {};
-          workouts.forEach(w => {
-             if (isProgressType && w.goalId === goal.id) {
-                 dailySums[w.date] = (dailySums[w.date] || 0) + w.amount;
-             } else if (!isProgressType && w.type === goal.type) {
-                 dailySums[w.date] = (dailySums[w.date] || 0) + w.amount;
-             }
-          });
-          Object.values(dailySums).forEach(sum => {
-             if (goal.target && sum >= goal.target) rawPkt += 30;
-          });
-      } else {
-          if (isProgressType) {
-            if ((goal.currentPage || 0) >= goal.target) rawPkt += 30;
-          } else {
-            const currentSum = workouts.filter(w => w.type === goal.type).reduce((acc, w) => acc + w.amount, 0);
-            if (goal.target && currentSum >= goal.target) rawPkt += 30;
+        const dailySums = {};
+        workouts.forEach(w => {
+          if (isProgressType && w.goalId === goal.id) {
+            dailySums[w.date] = (dailySums[w.date] || 0) + w.amount;
+          } else if (!isProgressType && w.type === goal.type) {
+            dailySums[w.date] = (dailySums[w.date] || 0) + w.amount;
           }
+        });
+        Object.entries(dailySums).forEach(([date, sum]) => {
+          if (goal.target && sum >= goal.target) addPointsForDate(date, 30);
+        });
+      } else {
+        const relevantWorkouts = workouts.filter(w => isProgressType ? w.goalId === goal.id : w.type === goal.type);
+        const currentSum = isProgressType
+          ? (goal.currentPage || 0)
+          : relevantWorkouts.reduce((acc, w) => acc + w.amount, 0);
+
+        if (goal.target && currentSum >= goal.target) {
+          const relatedTaskDates = tasks
+            .filter(task => task.goalId === goal.id)
+            .flatMap(task => task.repeat && task.repeat !== 'once'
+              ? Object.entries(task.completedDates || {}).filter(([, done]) => done).map(([date]) => date)
+              : (task.isCompleted ? [task.completedAt || task.dueDate] : []));
+          const completionDate = [...relevantWorkouts.map(w => w.date), ...relatedTaskDates]
+            .filter(Boolean)
+            .sort()
+            .at(-1) || todayStr;
+          addPointsForDate(completionDate, 30);
+        }
       }
     });
 
-    let consecutiveZeroDays = 0;
-    let totalPenalty = 0;
-    let curr = new Date(startDate);
+    const startDateStr = [...trackedDates].filter(date => date && date <= todayStr).sort()[0] || todayStr;
+    const currentDate = parseLocalDate(startDateStr);
+    const endDate = parseLocalDate(todayStr);
+    let totalPoints = 0;
+    let consecutiveInactiveDays = 0;
 
-    while (curr <= endDate) {
-      const dStr = formatDateStr(curr);
-      const hasDoneTask = tasks.some(t => {
-        if (t.repeat && t.repeat !== 'once') return Boolean(t.completedDates && t.completedDates[dStr]);
-        return t.isCompleted && (t.completedAt === dStr || t.dueDate === dStr);
-      });
-      const hasWorkout = workouts.some(w => w.date === dStr);
-        
-      if (hasDoneTask || hasWorkout) {
-        consecutiveZeroDays = 0;
+    while (currentDate <= endDate) {
+      const dateStr = formatDateStr(currentDate);
+      if (activeDates.has(dateStr)) {
+        consecutiveInactiveDays = 0;
+        totalPoints += pointsByDate.get(dateStr) || 0;
       } else {
-        consecutiveZeroDays++;
-        if (consecutiveZeroDays > 1) {
-          totalPenalty += 10 * Math.pow(2, consecutiveZeroDays - 2);
+        consecutiveInactiveDays++;
+        if (consecutiveInactiveDays > 1) {
+          const penalty = 10 * Math.pow(2, consecutiveInactiveDays - 2);
+          totalPoints = Math.max(0, totalPoints - penalty);
         }
       }
-      curr.setDate(curr.getDate() + 1);
+      currentDate.setDate(currentDate.getDate() + 1);
     }
-    return Math.max(0, rawPkt - totalPenalty);
+
+    return Math.max(0, totalPoints);
   };
 
-  const totalPKT = calculateTotalPKTWithPenalties();
+  const totalPKT = calculateTotalPKT();
   const levelInfo = getLevelInfo(totalPKT);
 
   useEffect(() => {

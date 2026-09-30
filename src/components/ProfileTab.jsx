@@ -1,12 +1,11 @@
-// src/components/tabs/ProfileTab.jsx
-import React from 'react';
 import { Settings, Award, ChevronRight, ShieldCheck, PieChart } from 'lucide-react';
 
 export default function ProfileTab({
   currentFontConfig, tStyle, userName, setUserName, userGender, setUserGender,
-  levelInfo, totalPKT, earnedTrophies, TROPHIES, setShowSettingsModal,
+  levelInfo, totalPKT, earnedTrophiesCount, trophyCount, setShowSettingsModal,
   setShowTrophiesModal, setShowRanksModal, renderMonthTimeline, monthNameDisplay,
-  monthTotalDoneTasks, categories, monthCategoryStats
+  monthTotalDoneTasks, categories, monthCategoryStats, renderDetailedStats,
+  weeklyDetailedStats, monthlyDetailedStats
 }) {
   return (
     <>
@@ -31,7 +30,7 @@ export default function ProfileTab({
             </div>
             <div className="text-left">
                <h3 className={'font-bold ' + currentFontConfig.sizeClass + ' ' + tStyle.titleText}>Moja Gablota Trofeów</h3>
-               <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Zobacz zdobyte osiągnięcia ({Object.keys(earnedTrophies).length}/{TROPHIES.length})</p>
+               <p className={currentFontConfig.smallClass + ' ' + tStyle.subText}>Zobacz zdobyte osiągnięcia ({earnedTrophiesCount}/{trophyCount})</p>
             </div>
          </div>
          <ChevronRight className={"w-6 h-6 " + tStyle.subText} />
@@ -105,6 +104,11 @@ export default function ProfileTab({
             <span className="font-mono font-bold text-emerald-500 text-lg md:text-xl">{totalPKT} PKT</span>
           </div>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {renderDetailedStats('Ostatnie 7 dni', weeklyDetailedStats, 'text-emerald-500')}
+        {renderDetailedStats(`Miesiąc: ${monthNameDisplay}`, monthlyDetailedStats, 'text-sky-500')}
       </div>
 
       {renderMonthTimeline()}

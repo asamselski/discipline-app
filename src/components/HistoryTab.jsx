@@ -1,7 +1,5 @@
-// src/components/tabs/HistoryTab.jsx
-import React from 'react';
 import { MessageSquare, Trash2 } from 'lucide-react';
-import { isTaskDoneForDate } from '../../utils/helpers';
+import { isTaskDoneForDate } from '../utils/date';
 
 export default function HistoryTab({
   currentFontConfig, tStyle, renderCalendar, selectedDate, selectedDayTasks,

@@ -1,12 +1,11 @@
-// src/components/tabs/GoalsTab.jsx
-import React from 'react';
-import { Target, ChevronDown, CheckCircle2, Dumbbell, Utensils, Brain, Edit3, Trash2, Circle, Archive } from 'lucide-react';
+import { Target, ChevronDown, CheckCircle2, Dumbbell, Utensils, Brain, Edit3, Trash2, Circle, Archive, BookOpen, Sparkles } from 'lucide-react';
 
 export default function GoalsTab({
   currentFontConfig, tStyle, openGoalWizard, activeGoalsCollapsed, setActiveGoalsCollapsed,
   goals, setEditingGoal, setConfirmDeleteModal, futureTasksCollapsed, setFutureTasksCollapsed,
   futureTasks, getCategoryStyle, setConfirmCompleteModal, setCompleteTaskValue, tomorrowStr,
-  setEditingTask, setShowArchiveModal
+  setEditingTask, setShowArchiveModal, setShowBooksModal, setShowWeeklyReviewModal,
+  setFormErrors, setDeleteAssociatedTasks
 }) {
   return (
     <>
@@ -16,7 +15,13 @@ export default function GoalsTab({
           <p className={currentFontConfig.smallClass + ' md:text-base ' + tStyle.subText}>Globalne centrum zarządzania celami oraz zadaniami</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setShowBooksModal(true)} className={'bg-sky-500 hover:bg-sky-400 transition-colors text-slate-950 font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg ' + currentFontConfig.smallClass}>
+            <BookOpen className="w-4 h-4" /> Moje książki
+          </button>
           <button onClick={openGoalWizard} className={'bg-amber-500 hover:bg-amber-400 transition-colors text-slate-950 font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg ' + currentFontConfig.smallClass}><Target className="w-4 h-4" /> + Cel</button>
+          <button onClick={() => setShowWeeklyReviewModal(true)} className={'bg-violet-500 hover:bg-violet-400 transition-colors text-white font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg ' + currentFontConfig.smallClass}>
+            <Sparkles className="w-4 h-4" /> Przegląd
+          </button>
         </div>
       </header>
 
@@ -39,9 +44,9 @@ export default function GoalsTab({
                   const isCompleted = percent >= 100;
                   
                   let CatIcon = Target;
-                  if (goal.category === 'Zdrowie') CatIcon = Dumbbell;
-                  if (goal.category === 'Dom') CatIcon = Utensils;
-                  if (goal.category === 'Rozwój') CatIcon = Brain;
+                  if (goal.category === 'Zdrowie' || goal.category === 'Sport') CatIcon = Dumbbell;
+                  if (goal.category === 'Dom' || goal.category === 'Ogólne') CatIcon = Utensils;
+                  if (goal.category === 'Rozwój' || goal.category === 'Nauka' || goal.category === 'Książka') CatIcon = Brain;
 
                   return (
                     <div key={goal.id} className={'p-5 rounded-3xl border shadow-sm relative bg-amber-500/10 border-amber-500/25 ' + (isCompleted ? ' border-emerald-500/50 bg-emerald-500/10' : '')}>
@@ -58,8 +63,8 @@ export default function GoalsTab({
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setEditingGoal({ ...goal })} className={'hover:text-amber-500 p-1 ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
-                          <button onClick={() => setConfirmDeleteModal({ type: 'goal', id: goal.id, name: goal.title })} className={'hover:text-red-500 p-1 ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => { setFormErrors({}); setEditingGoal({ ...goal }); }} className={'hover:text-amber-500 p-1 ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
+                          <button onClick={() => { setConfirmDeleteModal({ type: 'goal', id: goal.id, name: goal.title }); setDeleteAssociatedTasks(false); }} className={'hover:text-red-500 p-1 ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </div>
                       {goal.comment && <div className={'mb-2 p-2.5 rounded-xl bg-slate-500/10 italic ' + currentFontConfig.smallClass + ' ' + tStyle.subText}>💬 "{goal.comment}"</div>}
@@ -123,8 +128,8 @@ export default function GoalsTab({
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 ml-2">
-                      <button onClick={() => setEditingTask({ ...task })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
-                      <button onClick={() => setConfirmDeleteModal({ type: 'task', id: task.id, name: task.title })} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-red-500/10 hover:text-red-500 transition-colors ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => { setFormErrors({}); setEditingTask({ ...task }); }} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 hover:text-amber-500 transition-colors ' + tStyle.subText}><Edit3 className="w-4 h-4" /></button>
+                      <button onClick={() => { setConfirmDeleteModal({ type: 'task', id: task.id, name: task.title }); setDeleteAssociatedTasks(false); }} className={'p-2 rounded-xl bg-slate-500/10 hover:bg-red-500/10 hover:text-red-500 transition-colors ' + tStyle.subText}><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>
                 );
